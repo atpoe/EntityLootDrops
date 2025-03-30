@@ -17,16 +17,16 @@ public class LootCommand {
                     return 1;
                 })
             )
-            .then(Commands.literal("doubledrops")
+            .then(Commands.literal("dropchance")
                 .then(Commands.literal("enable")
                     .executes(context -> {
-                        context.getSource().sendSuccess(() -> LootConfig.toggleDoubleDrops(true), true);
+                        context.getSource().sendSuccess(() -> LootConfig.toggleDropchance(true), true);
                         return 1;
                     })
                 )
                 .then(Commands.literal("disable")
                     .executes(context -> {
-                        context.getSource().sendSuccess(() -> LootConfig.toggleDoubleDrops(false), true);
+                        context.getSource().sendSuccess(() -> LootConfig.toggleDropchance(false), true);
                         return 1;
                     })
                 )

@@ -28,7 +28,13 @@ public class MobDrops {
         }
 
         public String getItemId() { return itemId; }
-        public float getDropRate() { return dropRate; }
+        public float getDropRate() { 
+            float rate = dropRate / 100.0f; // Convert percentage to decimal (e.g., 100.0 -> 1.0)
+            if (LootConfig.isDoubleDropsEnabled()) {
+                rate = Math.min(1.0f, rate * 2.0f); // Double the rate but cap at 100%
+            }
+            return rate;
+        }
         public int getMinCount() { return minCount; }
         public int getMaxCount() { return maxCount; }
         
