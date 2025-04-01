@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -22,11 +21,16 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
+import net.minecraftforge.server.ServerLifecycleHooks;
+
 public class LootConfig {
     private static final Logger LOGGER = LogManager.getLogger();
-    private static final String CONFIG_DIR = "config/entitylootdrops";
+    private static final String CONFIG_DIR = "config/EntityLootDrops";
     private static final String NORMAL_DROPS_DIR = "normal";
     private static final String EVENTS_DIR = "events";
+    private static final String MOBS_DIR = "mobs";
     private static final String HOSTILE_DROPS_FILE = "hostile_drops.json";
     private static final String[] EVENT_TYPES = {"winter", "summer", "easter", "halloween"};
     
@@ -34,17 +38,29 @@ public class LootConfig {
     private static Map<String, List<CustomDropEntry>> hostileDrops = new HashMap<>(); // directory -> drops
     private static Set<String> activeEvents = new HashSet<>();
     private static boolean dropChanceEventActive = false;
-    
+    private static boolean doubleDropsActive = false;
+
+    private static Map<String, String> eventEnableMessages = new HashMap<>();
+    private static Map<String, String> eventDisableMessages = new HashMap<>();
+    private static String dropChanceEnableMessage = "§6[Events] §aDouble Drop Chance event has been enabled! §e(2x drop rates)";
+    private static String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
+    private static String doubleDropsEnableMessage = "§6[Events] §aDouble Drops event has been enabled! §e(2x drop amounts)";
+    private static String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
+
     public static void loadConfig() {
         // Store current active events and dropchance state
         Set<String> previousActiveEvents = new HashSet<>(activeEvents);
         boolean previousDropChanceState = dropChanceEventActive;
+        boolean previousDoubleDropsState = doubleDropsActive;
         
         // Create directories if they don't exist
         createConfigDirectories();
         
         // Load all drops from files
         loadAllDrops();
+        
+        // Load message configurations
+        loadMessages();
         
         // Restore active events (but only if they still exist in the config)
         activeEvents.clear();
@@ -54,8 +70,9 @@ public class LootConfig {
             }
         }
         
-        // Restore dropchance event state
+        // Restore event states
         dropChanceEventActive = previousDropChanceState;
+        doubleDropsActive = previousDoubleDropsState;
         
         LOGGER.info("Reloaded configuration: {} entity drop types, {} hostile drop types, {} active events", 
             entityDrops.size(), hostileDrops.size(), activeEvents.size());
@@ -63,8 +80,105 @@ public class LootConfig {
         if (dropChanceEventActive) {
             LOGGER.info("Drop chance bonus event is active (2x drop rates)");
         }
+        
+        if (doubleDropsActive) {
+            LOGGER.info("Double drops event is active (2x drop amounts)");
+        }
     }
     
+    private static void loadAllDrops() {
+        // Clear existing drops
+        entityDrops.clear();
+        hostileDrops.clear();
+        
+        // Load normal drops
+        Path normalDropsDir = Paths.get(CONFIG_DIR, NORMAL_DROPS_DIR);
+        loadDirectoryDrops(normalDropsDir, NORMAL_DROPS_DIR);
+        
+        // Load event drops
+        Path eventsDir = Paths.get(CONFIG_DIR, EVENTS_DIR);
+        if (Files.exists(eventsDir)) {
+            try {
+                // Load each event directory
+                Files.list(eventsDir)
+                    .filter(Files::isDirectory)
+                    .forEach(eventDir -> {
+                        String eventName = eventDir.getFileName().toString();
+                        loadDirectoryDrops(eventDir, eventName);
+                    });
+            } catch (IOException e) {
+                LOGGER.error("Failed to load event directories", e);
+            }
+        }
+    }
+// Add this to LootConfig class
+private static final String MESSAGES_FILE = "messages.json";
+
+// Add this class to store message configurations
+public static class MessageConfig {
+    private Map<String, String> eventEnableMessages = new HashMap<>();
+    private Map<String, String> eventDisableMessages = new HashMap<>();
+    private String dropChanceEnableMessage = "§6[Events] §aDouble Drop Chance event has been enabled! §e(2x drop rates)";
+    private String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
+    private String doubleDropsEnableMessage = "§6[Events] §aDouble Drops event has been enabled! §e(2x drop amounts)";
+    private String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
+    private String _comment = "Configure broadcast messages for events";
+}
+
+// Add this to the loadConfig method
+private static void loadMessages() {
+    Path messagesPath = Paths.get(CONFIG_DIR, MESSAGES_FILE);
+    
+    // Create default messages file if it doesn't exist
+    if (!Files.exists(messagesPath)) {
+        try {
+            MessageConfig defaultConfig = new MessageConfig();
+            
+            // Add default messages for built-in events
+            for (String eventType : EVENT_TYPES) {
+                defaultConfig.eventEnableMessages.put(eventType, 
+                    "§6[Events] §a" + eventType + " event has been enabled!");
+                defaultConfig.eventDisableMessages.put(eventType, 
+                    "§6[Events] §c" + eventType + " event has been disabled!");
+            }
+            
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            String json = gson.toJson(defaultConfig);
+            Files.write(messagesPath, json.getBytes());
+            LOGGER.info("Created default messages configuration");
+        } catch (IOException e) {
+            LOGGER.error("Failed to create default messages file", e);
+        }
+    }
+    
+    // Load messages from file
+    try {
+        if (Files.exists(messagesPath)) {
+            String json = new String(Files.readAllBytes(messagesPath));
+            Gson gson = new Gson();
+            MessageConfig config = gson.fromJson(json, MessageConfig.class);
+            
+            if (config != null) {
+                // Apply loaded configuration
+                eventEnableMessages.clear();
+                eventEnableMessages.putAll(config.eventEnableMessages);
+                
+                eventDisableMessages.clear();
+                eventDisableMessages.putAll(config.eventDisableMessages);
+                
+                dropChanceEnableMessage = config.dropChanceEnableMessage;
+                dropChanceDisableMessage = config.dropChanceDisableMessage;
+                doubleDropsEnableMessage = config.doubleDropsEnableMessage;
+                doubleDropsDisableMessage = config.doubleDropsDisableMessage;
+                
+                LOGGER.info("Loaded message configurations");
+            }
+        }
+    } catch (Exception e) {
+        LOGGER.error("Failed to load messages configuration", e);
+    }
+}
+
     private static void createConfigDirectories() {
         try {
             // Create main config directory
@@ -102,24 +216,38 @@ public class LootConfig {
             
             readme.append("This mod allows you to customize what items drop from mobs, with powerful features like conditional drops, commands, and special effects.\n\n");
             
+            readme.append("Quick Start:\n");
+            readme.append("-----------\n");
+            readme.append("1. All configuration is done through JSON files\n");
+            readme.append("2. Files are organized in folders for normal drops and event drops\n");
+            readme.append("3. Use /lootdrops commands to control events in-game\n\n");
+
             readme.append("1. Directory Structure\n");
             readme.append("----------------------\n");
             readme.append("config/entitylootdrops/\n");
             readme.append("|-- normal/                  # Regular drops (always active)\n");
             readme.append("|   |-- hostile_drops.json   # Drops for all hostile mobs\n");
-            readme.append("|   `-- [entity]_drops.json  # Entity-specific drops\n");
+            readme.append("|   `-- mobs/                # Entity-specific drops\n");
+            readme.append("|       |-- zombie_drops.json\n");
+            readme.append("|       |-- skeleton_drops.json\n");
+            readme.append("|       `-- ...\n");
             readme.append("|-- events/                  # Event-specific drops\n");
             readme.append("    |-- winter/              # Winter event drops\n");
+            readme.append("    |   |-- hostile_drops.json\n");
+            readme.append("    |   `-- mobs/\n");
+            readme.append("    |       |-- skeleton_ice.json\n");
+            readme.append("    |       `-- ...\n");
             readme.append("    |-- summer/              # Summer event drops\n");
             readme.append("    |-- easter/              # Easter event drops\n");
             readme.append("    |-- halloween/           # Halloween event drops\n");
             readme.append("    `-- [custom event]/      # Custom event drops (create your own folder)\n\n");
-            
+
             readme.append("2. Drop Configuration Format\n");
             readme.append("-------------------------\n");
             readme.append("All drop configurations use JSON format. Here's a detailed breakdown:\n\n");
             
             readme.append("Basic Properties:\n");
+            readme.append("- \"_comment\": \"Comment for this drop configuration (e.g., \"zombie drops diamonds\")\n");
             readme.append("- itemId: The Minecraft item ID (e.g., \"minecraft:diamond\")\n");
             readme.append("- dropChance: Percentage chance to drop (0-100)\n");
             readme.append("- minAmount: Minimum number of items to drop\n");
@@ -131,8 +259,8 @@ public class LootConfig {
             readme.append("- commandChance: Chance for the command to execute (0-100)\n");
             readme.append("- requiredAdvancement: Player must have this advancement\n");
             readme.append("- requiredEffect: Player must have this potion effect\n");
-            readme.append("- requiredEquipment: Player must have this item equipped\n\n");
-            readme.append("- requiredDimension: Player must be in this dimension (e.g., \"minecraft:overworld\")\n");
+            readme.append("- requiredEquipment: Player must have this item equipped\n");
+            readme.append("- requiredDimension: Player must be in this dimension (e.g., \"minecraft:overworld\")\n\n");
             
             readme.append("3. Example Configurations\n");
             readme.append("----------------------\n\n");
@@ -175,6 +303,25 @@ public class LootConfig {
             readme.append("}\n");
             readme.append("```\n\n");
             
+            readme.append("Complete example showing all available options:\n");
+            readme.append("```json\n");
+            readme.append("{\n");
+            readme.append("    \"_comment\": \"Example configuration showing all available options\",\n");
+            readme.append("    \"entityId\": \"minecraft:zombie\",\n");
+            readme.append("    \"itemId\": \"minecraft:diamond_sword\",\n");
+            readme.append("    \"dropChance\": 10.0,\n");
+            readme.append("    \"minAmount\": 1,\n");
+            readme.append("    \"maxAmount\": 3,\n");
+            readme.append("    \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Ultimate Sword\\\",\\\"color\\\":\\\"gold\\\"}',Lore:['{\\\"text\\\":\\\"A powerful weapon\\\",\\\"color\\\":\\\"purple\\\"}']},Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5},{id:\\\"minecraft:looting\\\",lvl:3}]}\",\n");
+            readme.append("    \"requiredAdvancement\": \"minecraft:story/enter_the_nether\",\n");
+            readme.append("    \"requiredEffect\": \"minecraft:strength\",\n");
+            readme.append("    \"requiredEquipment\": \"minecraft:diamond_pickaxe\",\n");
+            readme.append("    \"requiredDimension\": \"minecraft:overworld\",\n");
+            readme.append("    \"command\": \"title {player} title {\\\"text\\\":\\\"Epic Kill!\\\",\\\"color\\\":\\\"gold\\\"}\",\n");
+            readme.append("    \"commandChance\": 100.0\n");
+            readme.append("}\n");
+            readme.append("```\n\n");
+
             readme.append("4. Command Placeholders\n");
             readme.append("--------------------\n");
             readme.append("Use these in your commands to reference specific values:\n\n");
@@ -255,6 +402,8 @@ public class LootConfig {
             readme.append("- /lootdrops event <eventName> false   - Disable an event\n");
             readme.append("- /lootdrops event dropchance true     - Enable 2x drop chance bonus\n");
             readme.append("- /lootdrops event dropchance false    - Disable drop chance bonus\n\n");
+            readme.append("- /lootdrops event doubledrops true     - Enable 2x item drops bonus\n");
+            readme.append("- /lootdrops event doubledrops false    - Disable item drop bonus\n\n");
             
             readme.append("B. Information Commands:\n");
             readme.append("- /lootdrops list                      - List all active events\n");
@@ -278,9 +427,18 @@ public class LootConfig {
             readme.append("- Multiple events can be active simultaneously\n");
             readme.append("- Event drops stack with normal drops\n");
             readme.append("- Custom events can be created by adding new folders in the events directory\n");
-            readme.append("- The drop chance event doubles all drop chances when active\n\n");
+            readme.append("- The drop chance event doubles all drop chances when active\n");
+            readme.append("- The double drops event doubles all item drops when active\n\n");
             
-            readme.append("9. Tips and Best Practices\n");
+            readme.append("11. Customizing Event Messages\n");
+            readme.append("----------------------------\n");
+            readme.append("- You can customize the broadcast messages that appear when events are enabled or disabled\n");
+            readme.append("- 1. Edit the `messages.json` file in the config/entitylootdrops directory\n");
+            readme.append("- 2. Customize messages for built-in events or add messages for your custom events\n");
+            readme.append("- 3. Use color codes with § symbol (e.g., §a for green, §c for red, §6 for gold)\n");
+            readme.append("- 4. Changes take effect after reloading the configuration (/lootdrops reload)\n\n");
+
+            readme.append("10. Tips and Best Practices\n");
             readme.append("-----------------------\n");
             readme.append("1. Start with small drop chances (1-5%) for valuable items\n");
             readme.append("2. Use commands sparingly to avoid spam\n");
@@ -290,7 +448,7 @@ public class LootConfig {
             readme.append("6. Keep drop chances balanced for game progression\n\n");
             readme.append("7. You can delete most of the default example generated files, but keep the hostile_drops.json file\n\n");
             
-            readme.append("10. Common Issues\n");
+            readme.append("11. Common Issues\n");
             readme.append("-------------\n");
             readme.append("1. Invalid JSON: Check your syntax, especially with NBT data\n");
             readme.append("2. Missing Quotes: All strings need double quotes\n");
@@ -303,504 +461,110 @@ public class LootConfig {
         }
     }
     
-    
     private static void createDefaultDrops(Path directory, String eventType) throws IOException {
-        // Create hostile drops file if it doesn't exist
-        Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
-        if (!Files.exists(hostileDropsPath)) {
-            List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
-            
-            if (eventType == null) { // Normal drops
-                // Basic drop example
-                CustomDropEntry boneEntry = new CustomDropEntry();
-                boneEntry.setItemId("minecraft:bone");
-                boneEntry.setDropChance(20.0f);
-                boneEntry.setMinAmount(1);
-                boneEntry.setMaxAmount(2);
-                // Add comment
-                boneEntry.setComment("Basic drop example - bones from any hostile mob");
-                defaultHostileDrops.add(boneEntry);
-                
-                // Example with NBT data
-                CustomDropEntry rottenFleshEntry = new CustomDropEntry();
-                rottenFleshEntry.setItemId("minecraft:rotten_flesh");
-                rottenFleshEntry.setDropChance(30.0f);
-                rottenFleshEntry.setMinAmount(1);
-                rottenFleshEntry.setMaxAmount(3);
-                rottenFleshEntry.setComment("Standard drop with higher chance");
-                defaultHostileDrops.add(rottenFleshEntry);
-                
-                // Example with NBT data and command
-                CustomDropEntry goldenAppleEntry = new CustomDropEntry();
-                goldenAppleEntry.setItemId("minecraft:golden_apple");
-                goldenAppleEntry.setDropChance(5.0f);
-                goldenAppleEntry.setMinAmount(1);
-                goldenAppleEntry.setMaxAmount(1);
-                goldenAppleEntry.setNbtData("{display:{Name:'{\"text\":\"Blessed Apple\",\"color\":\"gold\",\"italic\":false}',Lore:['{\"text\":\"A rare gift from the gods\",\"color\":\"purple\",\"italic\":true}']}}");
-                goldenAppleEntry.setCommand("effect give {player} minecraft:regeneration 10 1");
-                goldenAppleEntry.setCommandChance(100.0f);
-                goldenAppleEntry.setComment("Rare drop with custom name, lore, and gives regeneration effect when obtained");
-                defaultHostileDrops.add(goldenAppleEntry);
-                
-                // Example with required advancement
-                CustomDropEntry emeraldEntry = new CustomDropEntry();
-                emeraldEntry.setItemId("minecraft:emerald");
-                emeraldEntry.setDropChance(15.0f);
-                emeraldEntry.setMinAmount(1);
-                emeraldEntry.setMaxAmount(3);
-                emeraldEntry.setRequiredAdvancement("minecraft:story/mine_diamond");
-                emeraldEntry.setComment("Only drops if player has mined diamonds (advancement requirement)");
-                defaultHostileDrops.add(emeraldEntry);
-                
-                // Example with required effect
-                CustomDropEntry diamondEntry = new CustomDropEntry();
-                diamondEntry.setItemId("minecraft:diamond");
-                diamondEntry.setDropChance(3.0f);
-                diamondEntry.setMinAmount(1);
-                diamondEntry.setMaxAmount(1);
-                diamondEntry.setRequiredEffect("minecraft:strength");
-                diamondEntry.setComment("Only drops if player has strength effect active");
-                defaultHostileDrops.add(diamondEntry);
-                
-                // Example with required equipment
-                CustomDropEntry netheriteEntry = new CustomDropEntry();
-                netheriteEntry.setItemId("minecraft:netherite_scrap");
-                netheriteEntry.setDropChance(2.0f);
-                netheriteEntry.setMinAmount(1);
-                netheriteEntry.setMaxAmount(1);
-                netheriteEntry.setRequiredEquipment("minecraft:diamond_sword");
-                netheriteEntry.setComment("Only drops if player is holding a diamond sword");
-                defaultHostileDrops.add(netheriteEntry);
+    // First create the mobs directory
+    Path mobsDir = directory.resolve(MOBS_DIR);
+    Files.createDirectories(mobsDir);
+    LOGGER.info("Created mobs directory at: {}", mobsDir);
 
-                // Example with required dimension
-                CustomDropEntry netherDrop = new CustomDropEntry();
-                netherDrop.setItemId("minecraft:glowstone_dust");
-                netherDrop.setDropChance(25.0f);
-                netherDrop.setMinAmount(2);
-                netherDrop.setMaxAmount(4);
-                netherDrop.setRequiredDimension("minecraft:the_nether");
-                netherDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 0.5 0.5 0.5 0.1 20");
-                netherDrop.setCommandChance(100.0f);
-                netherDrop.setComment("Nether-only drop example");
-                defaultHostileDrops.add(netherDrop);
-                
-                // Example with just a command (no item)
-                CustomDropEntry commandOnlyEntry = new CustomDropEntry();
-                commandOnlyEntry.setItemId("minecraft:air");
-                commandOnlyEntry.setDropChance(0.0f);
-                commandOnlyEntry.setMinAmount(0);
-                commandOnlyEntry.setMaxAmount(0);
-                commandOnlyEntry.setCommand("tellraw {player} {\"text\":\"You feel a strange energy...\",\"color\":\"light_purple\"}");
-                commandOnlyEntry.setCommandChance(5.0f);
-                commandOnlyEntry.setComment("No item drops, just a 5% chance to show a message to the player");
-                defaultHostileDrops.add(commandOnlyEntry);
-            } else {
-                switch (eventType) {
-                    case "halloween":
-                        // Regular pumpkin drop
-                        CustomDropEntry pumpkinEntry = new CustomDropEntry();
-                        pumpkinEntry.setItemId("minecraft:pumpkin");
-                        pumpkinEntry.setDropChance(25.0f);
-                        pumpkinEntry.setMinAmount(1);
-                        pumpkinEntry.setMaxAmount(1);
-                        pumpkinEntry.setComment("Halloween event: Basic pumpkin drop");
-                        defaultHostileDrops.add(pumpkinEntry);
-                        
-                        // Jack o'lantern with custom name and spooky sound command
-                        CustomDropEntry lanternEntry = new CustomDropEntry();
-                        lanternEntry.setItemId("minecraft:jack_o_lantern");
-                        lanternEntry.setDropChance(10.0f);
-                        lanternEntry.setMinAmount(1);
-                        lanternEntry.setMaxAmount(1);
-                        lanternEntry.setNbtData("{display:{Name:'{\"text\":\"Spooky Lantern\",\"color\":\"dark_purple\"}'}}");
-                        lanternEntry.setCommand("playsound minecraft:ambient.cave master {player} {entity_x} {entity_y} {entity_z} 1.0 0.5");
-                        lanternEntry.setComment("Halloween event: Spooky lantern that plays a cave sound when obtained");
-                        defaultHostileDrops.add(lanternEntry);
-                        
-                        // Cursed pumpkin pie with blindness effect
-                        CustomDropEntry pumpkinPieEntry = new CustomDropEntry();
-                        pumpkinPieEntry.setItemId("minecraft:pumpkin_pie");
-                        pumpkinPieEntry.setDropChance(15.0f);
-                        pumpkinPieEntry.setMinAmount(1);
-                        pumpkinPieEntry.setMaxAmount(2);
-                        pumpkinPieEntry.setNbtData("{display:{Name:'{\"text\":\"Cursed Pumpkin Pie\",\"color\":\"dark_red\"}',Lore:['{\"text\":\"Eat if you dare...\",\"color\":\"gray\",\"italic\":true}']}}");
-                        pumpkinPieEntry.setCommand("effect give {player} minecraft:blindness 5 0");
-                        pumpkinPieEntry.setCommandChance(50.0f);
-                        pumpkinPieEntry.setComment("Halloween event: Cursed pie with 50% chance to give blindness");
-                        defaultHostileDrops.add(pumpkinPieEntry);
-                        break;
-                        
-                    case "winter":
-                        // Regular snowball drop
-                        CustomDropEntry snowballEntry = new CustomDropEntry();
-                        snowballEntry.setItemId("minecraft:snowball");
-                        snowballEntry.setDropChance(35.0f);
-                        snowballEntry.setMinAmount(1);
-                        snowballEntry.setMaxAmount(3);
-                        snowballEntry.setComment("Winter event: Basic snowball drop");
-                        defaultHostileDrops.add(snowballEntry);
-                        
-                        // Enchanted diamond sword with frost aspect theme
-                        CustomDropEntry frostSwordEntry = new CustomDropEntry();
-                        frostSwordEntry.setItemId("minecraft:diamond_sword");
-                        frostSwordEntry.setDropChance(2.0f);
-                        frostSwordEntry.setMinAmount(1);
-                        frostSwordEntry.setMaxAmount(1);
-                        frostSwordEntry.setNbtData("{display:{Name:'{\"text\":\"Frostbite\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:sharpness\",lvl:3},{id:\"minecraft:knockback\",lvl:2}]}");
-                        frostSwordEntry.setCommand("effect give {player} minecraft:slowness 5 0");
-                        frostSwordEntry.setCommandChance(50.0f);
-                        frostSwordEntry.setRequiredAdvancement("minecraft:story/enter_the_nether");
-                        frostSwordEntry.setComment("Winter event: Rare frost sword that only drops for players who've been to the Nether");
-                        defaultHostileDrops.add(frostSwordEntry);
-                        
-                        // Ice block with weather command
-                        CustomDropEntry iceEntry = new CustomDropEntry();
-                        iceEntry.setItemId("minecraft:ice");
-                        iceEntry.setDropChance(10.0f);
-                        iceEntry.setMinAmount(1);
-                        iceEntry.setMaxAmount(3);
-                        iceEntry.setCommand("weather rain 600");
-                        iceEntry.setCommandChance(25.0f);
-                        iceEntry.setComment("Winter event: Ice with 25% chance to make it rain");
-                        defaultHostileDrops.add(iceEntry);
-                        break;
-                        
-                    case "easter":
-                        // Regular egg drop
-                        CustomDropEntry eggEntry = new CustomDropEntry();
-                        eggEntry.setItemId("minecraft:egg");
-                        eggEntry.setDropChance(40.0f);
-                        eggEntry.setMinAmount(1);
-                        eggEntry.setMaxAmount(2);
-                        eggEntry.setComment("Easter event: Basic egg drop");
-                        defaultHostileDrops.add(eggEntry);
-                        
-                        // Special colored leather boots with jump boost
-                        CustomDropEntry bootsEntry = new CustomDropEntry();
-                        bootsEntry.setItemId("minecraft:leather_boots");
-                        bootsEntry.setDropChance(8.0f);
-                        bootsEntry.setMinAmount(1);
-                        bootsEntry.setMaxAmount(1);
-                        bootsEntry.setNbtData("{display:{Name:'{\"text\":\"Bunny Hoppers\",\"color\":\"light_purple\"}',color:16756218},Enchantments:[{id:\"minecraft:feather_falling\",lvl:4}]}");
-                        bootsEntry.setCommand("effect give {player} minecraft:jump_boost 30 1");
-                        bootsEntry.setComment("Easter event: Special boots that give jump boost when obtained");
-                        defaultHostileDrops.add(bootsEntry);
-                        
-                        // Golden carrot with speed boost
-                        CustomDropEntry carrotEntry = new CustomDropEntry();
-                        carrotEntry.setItemId("minecraft:golden_carrot");
-                        carrotEntry.setDropChance(15.0f);
-                        carrotEntry.setMinAmount(1);
-                        carrotEntry.setMaxAmount(3);
-                        carrotEntry.setNbtData("{display:{Name:'{\"text\":\"Lucky Carrot\",\"color\":\"gold\"}'}}");
-                        carrotEntry.setCommand("effect give {player} minecraft:speed 30 1");
-                        carrotEntry.setRequiredEquipment("minecraft:leather_boots");
-                        carrotEntry.setComment("Easter event: Lucky carrot that only drops if wearing boots");
-                        defaultHostileDrops.add(carrotEntry);
-                        break;
-                        
-                    case "summer":
-                        // Regular melon drop
-                        CustomDropEntry melonEntry = new CustomDropEntry();
-                        melonEntry.setItemId("minecraft:melon");
-                        melonEntry.setDropChance(30.0f);
-                        melonEntry.setMinAmount(1);
-                        melonEntry.setMaxAmount(2);
-                        melonEntry.setComment("Summer event: Basic melon drop");
-                        defaultHostileDrops.add(melonEntry);
-                        
-                        // Enchanted fishing rod with weather command
-                        CustomDropEntry fishingRodEntry = new CustomDropEntry();
-                        fishingRodEntry.setItemId("minecraft:fishing_rod");
-                        fishingRodEntry.setDropChance(5.0f);
-                        fishingRodEntry.setMinAmount(1);
-                        fishingRodEntry.setMaxAmount(1);
-                        fishingRodEntry.setNbtData("{display:{Name:'{\"text\":\"Summer Catcher\",\"color\":\"yellow\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3},{id:\"minecraft:lure\",lvl:2}]}");
-                        fishingRodEntry.setCommand("weather clear");
-                        fishingRodEntry.setCommandChance(25.0f);
-                        fishingRodEntry.setComment("Summer event: Special fishing rod with 25% chance to clear weather");
-                        defaultHostileDrops.add(fishingRodEntry);
-                        
-                        // Sunflower with time set command
-                        CustomDropEntry sunflowerEntry = new CustomDropEntry();
-                        sunflowerEntry.setItemId("minecraft:sunflower");
-                        sunflowerEntry.setDropChance(20.0f);
-                        sunflowerEntry.setMinAmount(1);
-                        sunflowerEntry.setMaxAmount(1);
-                        sunflowerEntry.setCommand("time set day");
-                        sunflowerEntry.setRequiredEffect("minecraft:night_vision");
-                        sunflowerEntry.setComment("Summer event: Sunflower that sets time to day, only drops if player has night vision");
-                        defaultHostileDrops.add(sunflowerEntry);
-                        break;
-                }
+    // Create a simple test hostile drops file
+    Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
+    if (!Files.exists(hostileDropsPath)) {
+        List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
+        
+        // Create a comprehensive example drop for all hostile mobs
+        CustomDropEntry exampleDrop = new CustomDropEntry();
+        exampleDrop.setItemId("minecraft:diamond_sword");
+        exampleDrop.setDropChance(25.0f);
+        exampleDrop.setMinAmount(1);
+        exampleDrop.setMaxAmount(3);
+        exampleDrop.setNbtData("{display:{Name:'{\"text\":\"Ultimate Weapon\",\"color\":\"gold\"}',Lore:['{\"text\":\"Legendary drop example\",\"color\":\"purple\"}','{\"text\":\"Shows all features\",\"color\":\"gray\"}']},Enchantments:[{id:\"minecraft:sharpness\",lvl:5},{id:\"minecraft:smite\",lvl:3},{id:\"minecraft:looting\",lvl:3}]}");
+        exampleDrop.setRequiredAdvancement("minecraft:story/enter_the_nether");
+        exampleDrop.setRequiredEffect("minecraft:strength");
+        exampleDrop.setRequiredEquipment("minecraft:diamond_sword");
+        exampleDrop.setRequiredDimension("minecraft:overworld");
+        exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
+        exampleDrop.setCommandChance(100.0f);
+        exampleDrop.setComment("Complete example showing all available options");
+        defaultHostileDrops.add(exampleDrop);
+
+        // Add event-specific example if this is an event directory
+        if (eventType != null) {
+            CustomDropEntry eventDrop = new CustomDropEntry();
+            switch (eventType) {
+                case "winter":
+                    eventDrop.setItemId("minecraft:blue_ice");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Frozen Treasure\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:frost_walker\",lvl:2}]}");
+                    eventDrop.setCommand("particle minecraft:snowflake {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
+                case "summer":
+                    eventDrop.setItemId("minecraft:magma_block");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Summer Heat\",\"color\":\"red\"}'},Enchantments:[{id:\"minecraft:fire_aspect\",lvl:2}]}");
+                    eventDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
+                case "halloween":
+                    eventDrop.setItemId("minecraft:jack_o_lantern");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Spooky Treasure\",\"color\":\"dark_purple\"}'},Enchantments:[{id:\"minecraft:soul_speed\",lvl:3}]}");
+                    eventDrop.setCommand("particle minecraft:soul {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
+                case "easter":
+                    eventDrop.setItemId("minecraft:egg");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Festive Surprise\",\"color\":\"light_purple\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3}]}");
+                    eventDrop.setCommand("particle minecraft:end_rod {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
             }
-            
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            String json = gson.toJson(defaultHostileDrops);
-            Files.write(hostileDropsPath, json.getBytes());
-        }
-    
-        // Create example entity-specific drops if no JSON files exist yet
-        try {
-            boolean hasEntityDrops = Files.list(directory)
-                .anyMatch(p -> p.toString().endsWith(".json") && 
-                           !p.getFileName().toString().equals(HOSTILE_DROPS_FILE));
-                           
-            if (!hasEntityDrops) {
-                if (eventType == null) {
-                    // Regular zombie drop
-                    EntityDropEntry zombieEntry = new EntityDropEntry();
-                    zombieEntry.setEntityId("minecraft:zombie");
-                    zombieEntry.setItemId("minecraft:apple");
-                    zombieEntry.setDropChance(20.0f);
-                    zombieEntry.setMinAmount(1);
-                    zombieEntry.setMaxAmount(3);
-					zombieEntry.setComment("Basic zombie drop example");
-                    createDropFile(directory, "zombie_drops.json", zombieEntry);
-                    
-                    // Cow drop with NBT
-                    EntityDropEntry cowEntry = new EntityDropEntry();
-                    cowEntry.setEntityId("minecraft:cow");
-                    cowEntry.setItemId("minecraft:leather");
-                    cowEntry.setDropChance(25.0f);
-                    cowEntry.setMinAmount(1);
-                    cowEntry.setMaxAmount(3);
-                    cowEntry.setComment("Basic cow drop example");
-                    createDropFile(directory, "cow_drops.json", cowEntry);
-                    
-                    // Skeleton drop with custom arrow
-                    EntityDropEntry skeletonEntry = new EntityDropEntry();
-                    skeletonEntry.setEntityId("minecraft:skeleton");
-                    skeletonEntry.setItemId("minecraft:tipped_arrow");
-                    skeletonEntry.setDropChance(15.0f);
-                    skeletonEntry.setMinAmount(2);
-                    skeletonEntry.setMaxAmount(5);
-                    skeletonEntry.setNbtData("{Potion:\"minecraft:poison\"}");
-                    skeletonEntry.setComment("Skeleton drops poison arrows");
-                    createDropFile(directory, "skeleton_drops.json", skeletonEntry);
-                    
-                    // Creeper with command example
-                    EntityDropEntry creeperEntry = new EntityDropEntry();
-                    creeperEntry.setEntityId("minecraft:creeper");
-                    creeperEntry.setItemId("minecraft:gunpowder");
-                    creeperEntry.setDropChance(100.0f);
-                    creeperEntry.setMinAmount(1);
-                    creeperEntry.setMaxAmount(3);
-                    creeperEntry.setCommand("playsound minecraft:entity.generic.explode master {player} {entity_x} {entity_y} {entity_z}");
-                    creeperEntry.setComment("Creeper always drops gunpowder and plays explosion sound");
-                    createDropFile(directory, "creeper_drops.json", creeperEntry);
-                    
-                    // Spider with requirement example
-                    EntityDropEntry spiderEntry = new EntityDropEntry();
-                    spiderEntry.setEntityId("minecraft:spider");
-                    spiderEntry.setItemId("minecraft:fermented_spider_eye");
-                    spiderEntry.setDropChance(10.0f);
-                    spiderEntry.setMinAmount(1);
-                    spiderEntry.setMaxAmount(1);
-                    spiderEntry.setRequiredAdvancement("minecraft:story/enter_the_end");
-                    spiderEntry.setComment("Rare spider drop that only appears for players who've been to The End");
-                    createDropFile(directory, "spider_drops.json", spiderEntry);
-                } else {
-                    switch (eventType) {
-                        case "halloween":
-                            // Zombie with jack o'lantern
-                            EntityDropEntry zombieEntry = new EntityDropEntry();
-                            zombieEntry.setEntityId("minecraft:zombie");
-                            zombieEntry.setItemId("minecraft:jack_o_lantern");
-                            zombieEntry.setDropChance(30.0f);
-                            zombieEntry.setMinAmount(1);
-                            zombieEntry.setMaxAmount(1);
-                            zombieEntry.setComment("Halloween event: Zombies drop jack o'lanterns");
-                            createDropFile(directory, "zombie_pumpkin.json", zombieEntry);
-                            
-                            // Witch with custom potion
-                            EntityDropEntry witchEntry = new EntityDropEntry();
-                            witchEntry.setEntityId("minecraft:witch");
-                            witchEntry.setItemId("minecraft:potion");
-                            witchEntry.setDropChance(20.0f);
-                            witchEntry.setMinAmount(1);
-                            witchEntry.setMaxAmount(1);
-                            witchEntry.setNbtData("{Potion:\"minecraft:strong_healing\",display:{Name:'{\"text\":\"Witch Brew\",\"color\":\"dark_purple\"}'}}");
-                            witchEntry.setCommand("effect give {player} minecraft:nausea 10 0");
-                            witchEntry.setCommandChance(50.0f);
-                            witchEntry.setComment("Halloween event: Witches drop special potions with 50% chance of nausea");
-                            createDropFile(directory, "witch_potion.json", witchEntry);
-                            
-                            // Skeleton with soul lantern
-                            EntityDropEntry skeletonEntry = new EntityDropEntry();
-                            skeletonEntry.setEntityId("minecraft:skeleton");
-                            skeletonEntry.setItemId("minecraft:soul_lantern");
-                            skeletonEntry.setDropChance(15.0f);
-                            skeletonEntry.setMinAmount(1);
-                            skeletonEntry.setMaxAmount(1);
-                            skeletonEntry.setNbtData("{display:{Name:'{\"text\":\"Skeleton Soul\",\"color\":\"aqua\"}'}}");
-                            skeletonEntry.setRequiredEquipment("minecraft:bow");
-                            skeletonEntry.setComment("Halloween event: Skeletons drop soul lanterns if killed with a bow");
-                            createDropFile(directory, "skeleton_soul.json", skeletonEntry);
-                            break;
-                            
-                        case "winter":
-                            // Skeleton with ice
-                            EntityDropEntry skeletonIceEntry = new EntityDropEntry();
-                            skeletonIceEntry.setEntityId("minecraft:skeleton");
-                            skeletonIceEntry.setItemId("minecraft:ice");
-                            skeletonIceEntry.setDropChance(25.0f);
-                            skeletonIceEntry.setMinAmount(1);
-                            skeletonIceEntry.setMaxAmount(2);
-                            skeletonIceEntry.setComment("Winter event: Skeletons drop ice blocks");
-                            createDropFile(directory, "skeleton_ice.json", skeletonIceEntry);
-                            
-                            // Stray with frost bow
-                            EntityDropEntry strayEntry = new EntityDropEntry();
-                            strayEntry.setEntityId("minecraft:stray");
-                            strayEntry.setItemId("minecraft:bow");
-                            strayEntry.setDropChance(10.0f);
-                            strayEntry.setMinAmount(1);
-                            strayEntry.setMaxAmount(1);
-                            strayEntry.setNbtData("{display:{Name:'{\"text\":\"Frost Bow\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:power\",lvl:3}]}");
-                            strayEntry.setCommand("summon minecraft:snow_golem {entity_x} {entity_y} {entity_z}");
-                            strayEntry.setCommandChance(10.0f);
-                            strayEntry.setComment("Winter event: Strays drop special bows with 10% chance to summon a snow golem");
-                            createDropFile(directory, "stray_bow.json", strayEntry);
-                            
-                            // Polar bear with special item
-                            EntityDropEntry polarBearEntry = new EntityDropEntry();
-                            polarBearEntry.setEntityId("minecraft:polar_bear");
-                            polarBearEntry.setItemId("minecraft:packed_ice");
-                            polarBearEntry.setDropChance(100.0f);
-                            polarBearEntry.setMinAmount(1);
-                            polarBearEntry.setMaxAmount(3);
-                            polarBearEntry.setRequiredEffect("minecraft:invisibility");
-                            polarBearEntry.setComment("Winter event: Polar bears always drop packed ice if killed while player is invisible");
-                            createDropFile(directory, "polar_bear_ice.json", polarBearEntry);
-                            break;
-                            
-                        case "easter":
-                            // Chicken with egg
-                            EntityDropEntry chickenEntry = new EntityDropEntry();
-                            chickenEntry.setEntityId("minecraft:chicken");
-                            chickenEntry.setItemId("minecraft:egg");
-                            chickenEntry.setDropChance(50.0f);
-                            chickenEntry.setMinAmount(1);
-                            chickenEntry.setMaxAmount(3);
-                            chickenEntry.setComment("Easter event: Chickens drop more eggs");
-                            createDropFile(directory, "chicken_egg.json", chickenEntry);
-                            
-                            // Rabbit with special carrot
-                            EntityDropEntry rabbitEntry = new EntityDropEntry();
-                            rabbitEntry.setEntityId("minecraft:rabbit");
-                            rabbitEntry.setItemId("minecraft:golden_carrot");
-                            rabbitEntry.setDropChance(15.0f);
-                            rabbitEntry.setMinAmount(1);
-                            rabbitEntry.setMaxAmount(2);
-                            rabbitEntry.setNbtData("{display:{Name:'{\"text\":\"Magic Carrot\",\"color\":\"gold\"}'}}");
-                            rabbitEntry.setCommand("summon minecraft:rabbit {entity_x} {entity_y} {entity_z} {Type:99}");
-                            rabbitEntry.setCommandChance(5.0f);
-                            rabbitEntry.setComment("Easter event: Rabbits drop golden carrots with 5% chance to spawn the killer bunny");
-                            createDropFile(directory, "rabbit_carrot.json", rabbitEntry);
-                            
-                            // Fox with egg basket
-                            EntityDropEntry foxEntry = new EntityDropEntry();
-                            foxEntry.setEntityId("minecraft:fox");
-                            foxEntry.setItemId("minecraft:basket");
-                            foxEntry.setDropChance(25.0f);
-                            foxEntry.setMinAmount(1);
-                            foxEntry.setMaxAmount(1);
-                            foxEntry.setNbtData("{BlockEntityTag:{Items:[{id:\"minecraft:egg\",Count:5b},{id:\"minecraft:golden_carrot\",Count:2b}]}}");
-                            foxEntry.setRequiredAdvancement("minecraft:husbandry/breed_an_animal");
-                            foxEntry.setComment("Easter event: Foxes drop baskets with eggs if player has bred animals");
-                            createDropFile(directory, "fox_basket.json", foxEntry);
-                            break;
-                            
-                        case "summer":
-                            // Cow with sunflower
-                            EntityDropEntry cowEntry = new EntityDropEntry();
-                            cowEntry.setEntityId("minecraft:cow");
-                            cowEntry.setItemId("minecraft:sunflower");
-                            cowEntry.setDropChance(30.0f);
-                            cowEntry.setMinAmount(1);
-                            cowEntry.setMaxAmount(2);
-                            cowEntry.setComment("Summer event: Cows drop sunflowers");
-                            createDropFile(directory, "cow_flower.json", cowEntry);
-                            
-                            // Drowned with trident
-                            EntityDropEntry drownedEntry = new EntityDropEntry();
-                            drownedEntry.setEntityId("minecraft:drowned");
-                            drownedEntry.setItemId("minecraft:trident");
-                            drownedEntry.setDropChance(5.0f);
-                            drownedEntry.setMinAmount(1);
-                            drownedEntry.setMaxAmount(1);
-                            drownedEntry.setNbtData("{display:{Name:'{\"text\":\"Ocean Spear\",\"color\":\"dark_aqua\"}'},Enchantments:[{id:\"minecraft:loyalty\",lvl:2}]}");
-                            drownedEntry.setCommand("weather thunder 600");
-                            drownedEntry.setCommandChance(20.0f);
-                            drownedEntry.setComment("Summer event: Drowned have increased chance to drop tridents with 20% chance to cause a thunderstorm");
-                            createDropFile(directory, "drowned_trident.json", drownedEntry);
-                            
-                            // Husk with special drop
-                            EntityDropEntry huskEntry = new EntityDropEntry();
-                            huskEntry.setEntityId("minecraft:husk");
-                            huskEntry.setItemId("minecraft:sand");
-                            huskEntry.setDropChance(100.0f);
-                            huskEntry.setMinAmount(3);
-                            huskEntry.setMaxAmount(7);
-                            huskEntry.setRequiredEquipment("minecraft:golden_shovel");
-                            huskEntry.setComment("Summer event: Husks always drop sand if killed with a golden shovel");
-                            createDropFile(directory, "husk_sand.json", huskEntry);
-                            break;
-                    }
-                }
+            if (eventDrop.getItemId() != null) {
+                eventDrop.setDropChance(50.0f);
+                eventDrop.setMinAmount(1);
+                eventDrop.setMaxAmount(3);
+                eventDrop.setRequiredDimension("minecraft:overworld");
+                eventDrop.setCommandChance(100.0f);
+                eventDrop.setComment(eventType + " event example drop");
+                defaultHostileDrops.add(eventDrop);
             }
-        } catch (IOException e) {
-            LOGGER.error("Error checking for entity drops in {}: {}", directory, e.getMessage());
         }
-    }
-    
-    private static void createDropFile(Path directory, String filename, EntityDropEntry entry) throws IOException {
-        Path filePath = directory.resolve(filename);
+        
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(entry);
-        Files.write(filePath, json.getBytes());
+        String json = gson.toJson(defaultHostileDrops);
+        Files.write(hostileDropsPath, json.getBytes());
+        LOGGER.info("Created test hostile drops at: {}", hostileDropsPath);
     }
 
-    private static void loadAllDrops() {
-        entityDrops.clear();
-        hostileDrops.clear();
+    // Log the contents of the directory
+    LOGGER.info("Directory contents for {}", directory);
+    try {
+        Files.list(directory).forEach(path -> 
+            LOGGER.info("- {}", path.getFileName()));
         
-        // Load normal drops
-        loadDirectoryDrops(Paths.get(CONFIG_DIR, NORMAL_DROPS_DIR), NORMAL_DROPS_DIR);
-        
-        // Load event drops
-        for (String eventType : EVENT_TYPES) {
-            Path eventDir = Paths.get(CONFIG_DIR, EVENTS_DIR, eventType);
-            loadDirectoryDrops(eventDir, eventType);
+        if (Files.exists(mobsDir)) {
+            LOGGER.info("Mobs directory contents:");
+            Files.list(mobsDir).forEach(path -> 
+                LOGGER.info("- {}", path.getFileName()));
         }
-        
-        // Check for any custom event folders that aren't in the default list
-        try {
-            Path eventsDir = Paths.get(CONFIG_DIR, EVENTS_DIR);
-            if (Files.exists(eventsDir)) {
-                Files.list(eventsDir)
-                    .filter(Files::isDirectory)
-                    .map(path -> path.getFileName().toString())
-                    .filter(name -> !Arrays.asList(EVENT_TYPES).contains(name))
-                    .forEach(customEvent -> {
-                        Path customEventDir = Paths.get(CONFIG_DIR, EVENTS_DIR, customEvent);
-                        loadDirectoryDrops(customEventDir, customEvent);
-                        LOGGER.info("Loaded custom event directory: {}", customEvent);
-                    });
-            }
-        } catch (IOException e) {
-            LOGGER.error("Error checking for custom event directories", e);
-        }
+    } catch (IOException e) {
+        LOGGER.error("Error listing directory contents", e);
     }
+}
+
     
+    private static void broadcastEventMessage(String message) {
+    // Get the server instance
+    MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+    if (server != null) {
+        // Send message to all players
+        server.getPlayerList().broadcastSystemMessage(
+            Component.literal(message), false);
+    }
+}
+
+
     private static void loadDirectoryDrops(Path directory, String dirKey) {
         if (!Files.exists(directory)) {
             return;
         }
         
         try {
-            // Load hostile drops
+            // Load hostile drops from the directory root
             Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
             if (Files.exists(hostileDropsPath)) {
                 String json = new String(Files.readAllBytes(hostileDropsPath));
@@ -813,29 +577,31 @@ public class LootConfig {
                 }
             }
             
-            // Load entity-specific drops
-            List<EntityDropEntry> dirDrops = new ArrayList<>();
-            Files.list(directory)
-                .filter(path -> path.toString().endsWith(".json") && 
-                               !path.getFileName().toString().equals(HOSTILE_DROPS_FILE))
-                .forEach(path -> {
-                    try {
-                        String json = new String(Files.readAllBytes(path));
-                        Gson gson = new Gson();
-                        EntityDropEntry entry = gson.fromJson(json, EntityDropEntry.class);
-                        if (entry != null) {
-                            dirDrops.add(entry);
-                            LOGGER.debug("Loaded entity drop: {} -> {} from {}", 
-                                entry.getEntityId(), entry.getItemId(), path.getFileName());
+            // Load entity-specific drops from the mobs subdirectory
+            Path mobsDir = directory.resolve(MOBS_DIR);
+            if (Files.exists(mobsDir)) {
+                List<EntityDropEntry> dirDrops = new ArrayList<>();
+                Files.list(mobsDir)
+                    .filter(path -> path.toString().endsWith(".json"))
+                    .forEach(path -> {
+                        try {
+                            String json = new String(Files.readAllBytes(path));
+                            Gson gson = new Gson();
+                            EntityDropEntry entry = gson.fromJson(json, EntityDropEntry.class);
+                            if (entry != null) {
+                                dirDrops.add(entry);
+                                LOGGER.debug("Loaded entity drop: {} -> {} from {}", 
+                                    entry.getEntityId(), entry.getItemId(), path.getFileName());
+                            }
+                        } catch (Exception e) {
+                            LOGGER.error("Error loading drop file {}: {}", path, e.getMessage());
                         }
-                    } catch (Exception e) {
-                        LOGGER.error("Error loading drop file {}: {}", path, e.getMessage());
-                    }
-                });
-            
-            if (!dirDrops.isEmpty()) {
-                entityDrops.put(dirKey, dirDrops);
-                LOGGER.debug("Loaded {} entity drops from {}", dirDrops.size(), dirKey);
+                    });
+                
+                if (!dirDrops.isEmpty()) {
+                    entityDrops.put(dirKey, dirDrops);
+                    LOGGER.debug("Loaded {} entity drops from {}", dirDrops.size(), dirKey);
+                }
             }
         } catch (IOException e) {
             LOGGER.error("Failed to load drops from directory: {}", directory, e);
@@ -868,24 +634,102 @@ public class LootConfig {
         if (active) {
             activeEvents.add(eventName.toLowerCase());
             LOGGER.info("Enabled event: {}", eventName);
+            String message = eventEnableMessages.getOrDefault(eventName.toLowerCase(), 
+                "§6[Events] §a" + eventName + " event has been enabled!");
+            broadcastEventMessage(message);
         } else {
             activeEvents.remove(eventName.toLowerCase());
             LOGGER.info("Disabled event: {}", eventName);
+            String message = eventDisableMessages.getOrDefault(eventName.toLowerCase(), 
+                "§6[Events] §c" + eventName + " event has been disabled!");
+            broadcastEventMessage(message);
         }
-    }
-    
-    public static Set<String> getActiveEvents() {
-        return activeEvents;
-    }
-    
-    public static boolean isDropChanceEventActive() {
-        return dropChanceEventActive;
     }
     
     public static void toggleDropChanceEvent(boolean active) {
         dropChanceEventActive = active;
         LOGGER.info("Drop chance event set to: {}", active);
+        if (active) {
+            broadcastEventMessage(dropChanceEnableMessage);
+        } else {
+            broadcastEventMessage(dropChanceDisableMessage);
+        }
     }
+    
+    public static void toggleDoubleDrops(boolean active) {
+        doubleDropsActive = active;
+        LOGGER.info("Double drops set to: {}", active);
+        if (active) {
+            broadcastEventMessage(doubleDropsEnableMessage);
+        } else {
+            broadcastEventMessage(doubleDropsDisableMessage);
+        }
+    }
+
+    
+    public static void setEventEnableMessage(String eventName, String message) {
+    eventEnableMessages.put(eventName.toLowerCase(), message);
+}
+
+public static void setEventDisableMessage(String eventName, String message) {
+    eventDisableMessages.put(eventName.toLowerCase(), message);
+}
+
+public static void setDropChanceEnableMessage(String message) {
+    dropChanceEnableMessage = message;
+}
+
+public static void setDropChanceDisableMessage(String message) {
+    dropChanceDisableMessage = message;
+}
+
+public static void setDoubleDropsEnableMessage(String message) {
+    doubleDropsEnableMessage = message;
+}
+
+public static void setDoubleDropsDisableMessage(String message) {
+    doubleDropsDisableMessage = message;
+}
+
+// Getters for the messages
+public static String getEventEnableMessage(String eventName) {
+    return eventEnableMessages.getOrDefault(eventName.toLowerCase(), 
+        "§6[Events] §a" + eventName + " event has been enabled!");
+}
+// Add these missing getter methods to LootConfig.java
+public static String getEventDisableMessage(String eventName) {
+    return eventDisableMessages.getOrDefault(eventName.toLowerCase(), 
+        "§6[Events] §c" + eventName + " event has been disabled!");
+}
+
+public static String getDropChanceEnableMessage() {
+    return dropChanceEnableMessage;
+}
+
+public static String getDropChanceDisableMessage() {
+    return dropChanceDisableMessage;
+}
+
+public static String getDoubleDropsEnableMessage() {
+    return doubleDropsEnableMessage;
+}
+
+public static String getDoubleDropsDisableMessage() {
+    return doubleDropsDisableMessage;
+}
+
+// Add methods to get active events and check event states
+public static Set<String> getActiveEvents() {
+    return Collections.unmodifiableSet(activeEvents);
+}
+
+public static boolean isDropChanceEventActive() {
+    return dropChanceEventActive;
+}
+
+public static boolean isDoubleDropsActive() {
+    return doubleDropsActive;
+}
 	
 public static class CustomDropEntry {
     private String itemId;

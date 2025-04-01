@@ -15,13 +15,23 @@ public class EntityLootDrops {
 
     public EntityLootDrops() {
         MinecraftForge.EVENT_BUS.register(this);
+        MinecraftForge.EVENT_BUS.register(LootEventHandler.class);
+        LOGGER.info("Entity Loot Drops mod initializing...");
+        
+        // Initial config load
         LootConfig.loadConfig();
-        LOGGER.info("Entity Loot Drops mod initialized");
+        LOGGER.info("Initial config load complete");
     }
 
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
+        LOGGER.info("Server starting - reloading loot config...");
         LootConfig.loadConfig();
-        LOGGER.info("Entity Loot Drops configuration loaded");
+        
+        // Debug info
+        LOGGER.info("Loaded {} normal drops", LootConfig.getNormalDrops().size());
+        LOGGER.info("Loaded {} hostile drops", LootConfig.getNormalHostileDrops().size());
+        LOGGER.info("Loaded {} event types", LootConfig.getEventDrops().size());
+        LOGGER.info("Active events: {}", LootConfig.getActiveEvents());
     }
 }

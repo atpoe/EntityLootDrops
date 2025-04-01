@@ -1,5 +1,6 @@
 package net.poe.entitylootdrops;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -18,6 +19,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -40,6 +42,47 @@ public class LootEventHandler {
         
         if (!(event.getSource().getEntity() instanceof Player)) {
             return;
+        }
+        
+        // If double drops is active, double the amount of vanilla drops
+        if (LootConfig.isDoubleDropsActive()) {
+            List<ItemEntity> doubledDrops = new ArrayList<>();
+            
+            event.getDrops().forEach(itemEntity -> {
+                ItemStack originalStack = itemEntity.getItem();
+                
+                ItemStack doubledStack = new ItemStack(
+                    originalStack.getItem(),
+                    originalStack.getCount() * 2
+                );
+                
+                if (originalStack.hasTag()) {
+                    doubledStack.setTag(originalStack.getTag().copy());
+                }
+                
+                ItemEntity doubledEntity = new ItemEntity(
+                    itemEntity.level(),
+                    itemEntity.getX(),
+                    itemEntity.getY(),
+                    itemEntity.getZ(),
+                    doubledStack
+                );
+                
+                // Copy motion from original
+                doubledEntity.setDeltaMovement(itemEntity.getDeltaMovement());
+                
+                // Set pickup delay using the correct method
+                doubledEntity.setDefaultPickUpDelay();
+                
+                doubledDrops.add(doubledEntity);
+                
+                LOGGER.debug("Doubled vanilla drop amount for {} to {}", 
+                    ForgeRegistries.ITEMS.getKey(originalStack.getItem()), 
+                    doubledStack.getCount());
+            });
+            
+            event.getDrops().clear();
+            event.getDrops().addAll(doubledDrops);
         }
         
         Player player = (Player) event.getSource().getEntity();
@@ -69,7 +112,7 @@ public class LootEventHandler {
     }
     
     private static void processEntityDrops(LivingDropsEvent event, String entityIdStr, 
-                                         List<LootConfig.EntityDropEntry> dropsList, Player player) {
+                                     List<LootConfig.EntityDropEntry> dropsList, Player player) {
         for (LootConfig.EntityDropEntry drop : dropsList) {
             if (drop.getEntityId().equals(entityIdStr)) {
                 processDropEntry(event, drop, player);
@@ -85,7 +128,6 @@ public class LootEventHandler {
     
     private static void processDropEntry(LivingDropsEvent event, LootConfig.CustomDropEntry drop, Player player) {
         try {
-            // Check dimension requirement first
             if (drop.hasRequiredDimension()) {
                 ResourceLocation playerDimension = player.level().dimension().location();
                 String requiredDimension = drop.getRequiredDimension();
@@ -98,7 +140,6 @@ public class LootEventHandler {
                 LOGGER.debug("Dimension requirement met for {}: {}", drop.getItemId(), requiredDimension);
             }
             
-            // Check advancement requirement
             if (drop.hasRequiredAdvancement() && player instanceof ServerPlayer) {
                 ServerPlayer serverPlayer = (ServerPlayer) player;
                 ResourceLocation advancement = new ResourceLocation(drop.getRequiredAdvancement());
@@ -110,7 +151,6 @@ public class LootEventHandler {
                 LOGGER.debug("Advancement requirement met for {}: {}", drop.getItemId(), advancement);
             }
             
-            // Check effect requirement
             if (drop.hasRequiredEffect()) {
                 if (!hasEffect(player, drop.getRequiredEffect())) {
                     LOGGER.debug("Skipping drop {} - missing effect {}", 
@@ -120,7 +160,6 @@ public class LootEventHandler {
                 LOGGER.debug("Effect requirement met for {}: {}", drop.getItemId(), drop.getRequiredEffect());
             }
             
-            // Check equipment requirement
             if (drop.hasRequiredEquipment()) {
                 if (!hasEquipment(player, drop.getRequiredEquipment())) {
                     LOGGER.debug("Skipping drop {} - missing equipment {}", 
@@ -130,7 +169,6 @@ public class LootEventHandler {
                 LOGGER.debug("Equipment requirement met for {}: {}", drop.getItemId(), drop.getRequiredEquipment());
             }
             
-            // Calculate drop chance
             float chance = drop.getDropChance();
             if (LootConfig.isDropChanceEventActive()) {
                 chance *= 2.0f;
@@ -138,7 +176,6 @@ public class LootEventHandler {
                     drop.getItemId(), drop.getDropChance(), chance);
             }
             
-            // Process command if present
             if (drop.hasCommand() && player instanceof ServerPlayer) {
                 float cmdChance = drop.getCommandChance();
                 if (RANDOM.nextFloat() * 100 <= cmdChance) {
@@ -147,49 +184,44 @@ public class LootEventHandler {
                 }
             }
             
-            // Roll for item drop
             if (RANDOM.nextFloat() * 100 <= chance) {
-                try {
-                    ResourceLocation itemId = new ResourceLocation(drop.getItemId());
-                    Item item = ForgeRegistries.ITEMS.getValue(itemId);
-                    
-                    if (item != null) {
-                        // Calculate amount
-                        int amount = drop.getMinAmount();
-                        if (drop.getMaxAmount() > drop.getMinAmount()) {
-                            amount += RANDOM.nextInt(drop.getMaxAmount() - drop.getMinAmount() + 1);
-                        }
-                        
-                        // Create item stack
-                        ItemStack stack = new ItemStack(item, amount);
-                        
-                        // Apply NBT data if present
-                        if (drop.hasNbtData()) {
-                            try {
-                                CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
-                                stack.setTag(nbt);
-                                LOGGER.debug("Applied NBT data to {}: {}", drop.getItemId(), drop.getNbtData());
-                            } catch (CommandSyntaxException e) {
-                                LOGGER.error("Invalid NBT format for {}: {}", drop.getItemId(), e.getMessage());
-                            }
-                        }
-                        
-                        // Spawn the item
-                        event.getEntity().spawnAtLocation(stack);
-                        
-                        // Log the drop
-                        if (LootConfig.isDropChanceEventActive()) {
-                            LOGGER.debug("Dropped {} x{} (doubled chance: {}%)", 
-                                drop.getItemId(), amount, chance);
-                        } else {
-                            LOGGER.debug("Dropped {} x{} (chance: {}%)", 
-                                drop.getItemId(), amount, chance);
-                        }
-                    } else {
-                        LOGGER.error("Invalid item ID for drop: {}", drop.getItemId());
+                ResourceLocation itemId = new ResourceLocation(drop.getItemId());
+                Item item = ForgeRegistries.ITEMS.getValue(itemId);
+                
+                if (item != null) {
+                    int amount = drop.getMinAmount();
+                    if (drop.getMaxAmount() > drop.getMinAmount()) {
+                        amount += RANDOM.nextInt(drop.getMaxAmount() - drop.getMinAmount() + 1);
                     }
-                } catch (Exception e) {
-                    LOGGER.error("Error processing drop {}: {}", drop.getItemId(), e.getMessage());
+                    
+                    if (LootConfig.isDoubleDropsActive()) {
+                        amount *= 2;
+                        LOGGER.debug("Doubled drop amount for {} to {}", drop.getItemId(), amount);
+                    }
+                    
+                    ItemStack stack = new ItemStack(item, amount);
+                    
+                    if (drop.hasNbtData()) {
+                        try {
+                            CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
+                            stack.setTag(nbt);
+                            LOGGER.debug("Applied NBT data to {}: {}", drop.getItemId(), drop.getNbtData());
+                        } catch (CommandSyntaxException e) {
+                            LOGGER.error("Invalid NBT format for {}: {}", drop.getItemId(), e.getMessage());
+                        }
+                    }
+                    
+                    event.getEntity().spawnAtLocation(stack);
+                    
+                    if (LootConfig.isDropChanceEventActive()) {
+                        LOGGER.debug("Dropped {} x{} (doubled chance: {}%)", 
+                            drop.getItemId(), amount, chance);
+                    } else {
+                        LOGGER.debug("Dropped {} x{} (chance: {}%)", 
+                            drop.getItemId(), amount, chance);
+                    }
+                } else {
+                    LOGGER.error("Invalid item ID for drop: {}", drop.getItemId());
                 }
             }
         } catch (Exception e) {

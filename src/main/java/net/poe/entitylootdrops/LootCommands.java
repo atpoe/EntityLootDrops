@@ -59,7 +59,7 @@ public class LootCommands {
                     })
                 )
             )
-            // Move dropchance under event command
+            // Add dropchance under event command
             .then(Commands.literal("dropchance")
                 .then(Commands.argument("active", BoolArgumentType.bool())
                     .executes(context -> {
@@ -78,6 +78,25 @@ public class LootCommands {
                     })
                 )
             )
+            // Add doubledrops under event command
+            .then(Commands.literal("doubledrops")
+                .then(Commands.argument("active", BoolArgumentType.bool())
+                    .executes(context -> {
+                        boolean active = BoolArgumentType.getBool(context, "active");
+                        LootConfig.toggleDoubleDrops(active);
+                        
+                        if (active) {
+                            context.getSource().sendSuccess(() -> 
+                                Component.literal("§aEnabled double drops event - §eAll mob drops are now DOUBLED!"), true);
+                        } else {
+                            context.getSource().sendSuccess(() -> 
+                                Component.literal("§cDisabled double drops event - Drop amounts returned to normal"), true);
+                        }
+                        
+                        return 1;
+                    })
+                )
+            )
         );
         
         // List active events subcommand
@@ -85,8 +104,9 @@ public class LootCommands {
             .executes(context -> {
                 Set<String> activeEvents = LootConfig.getActiveEvents();
                 boolean dropChanceActive = LootConfig.isDropChanceEventActive();
+                boolean doubleDropsActive = LootConfig.isDoubleDropsActive();
                 
-                if (activeEvents.isEmpty() && !dropChanceActive) {
+                if (activeEvents.isEmpty() && !dropChanceActive && !doubleDropsActive) {
                     context.getSource().sendSuccess(() -> 
                         Component.literal("§cNo active events"), false);
                 } else {
@@ -100,6 +120,13 @@ public class LootCommands {
                             sb.append("§6, ");
                         }
                         sb.append("§e§ldropchance (2x drop rates)§r");
+                    }
+                    
+                    if (doubleDropsActive) {
+                        if (!activeEvents.isEmpty() || dropChanceActive) {
+                            sb.append("§6, ");
+                        }
+                        sb.append("§e§ldoubledrops (2x amounts)§r");
                     }
                     
                     context.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
@@ -122,3 +149,4 @@ public class LootCommands {
         dispatcher.register(rootCommand);
     }
 }
+
