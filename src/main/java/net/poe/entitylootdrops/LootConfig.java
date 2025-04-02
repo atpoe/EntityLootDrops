@@ -430,7 +430,7 @@ private static void loadMessages() {
             readme.append("- The drop chance event doubles all drop chances when active\n");
             readme.append("- The double drops event doubles all item drops when active\n\n");
             
-            readme.append("11. Customizing Event Messages\n");
+            readme.append("9. Customizing Event Messages\n");
             readme.append("----------------------------\n");
             readme.append("- You can customize the broadcast messages that appear when events are enabled or disabled\n");
             readme.append("- 1. Edit the `messages.json` file in the config/entitylootdrops directory\n");
