@@ -14,22 +14,35 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+/**
+ * Command handler for the EntityLootDrops mod.
+ * Registers and processes all commands for controlling events and configuration.
+ */
 @Mod.EventBusSubscriber(modid = EntityLootDrops.MOD_ID)
 public class LootCommands {
 
+    /**
+     * Event handler for command registration.
+     * This is called when the server is starting and commands are being registered.
+     * 
+     * @param event The RegisterCommandsEvent containing the command dispatcher
+     */
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
         
-        // Main command
+        // Main command - /lootdrops
+        // This is the root command that all other subcommands are attached to
         LiteralArgumentBuilder<CommandSourceStack> rootCommand = Commands.literal("lootdrops")
             .requires(source -> source.hasPermission(2)); // Requires permission level 2 (op)
         
-        // Event toggle subcommand
+        // Event toggle subcommand - /lootdrops event <eventName> <true|false>
+        // Used to enable or disable specific events
         rootCommand.then(Commands.literal("event")
             .then(Commands.argument("eventName", StringArgumentType.string())
                 .suggests((context, builder) -> {
-                    // Suggest available events
+                    // Suggest available events when the player is typing
+                    // This provides tab-completion for event names
                     for (String eventName : LootConfig.getEventDrops().keySet()) {
                         builder.suggest(eventName);
                     }
@@ -37,16 +50,20 @@ public class LootCommands {
                 })
                 .then(Commands.argument("active", BoolArgumentType.bool())
                     .executes(context -> {
+                        // Extract command arguments
                         String eventName = StringArgumentType.getString(context, "eventName");
                         boolean active = BoolArgumentType.getBool(context, "active");
                         
+                        // Validate that the event exists
                         if (!LootConfig.getEventDrops().containsKey(eventName)) {
                             context.getSource().sendFailure(Component.literal("Unknown event: " + eventName));
-                            return 0;
+                            return 0; // Command failed
                         }
                         
+                        // Toggle the event state
                         LootConfig.toggleEvent(eventName, active);
                         
+                        // Send success message to the command sender
                         if (active) {
                             context.getSource().sendSuccess(() -> 
                                 Component.literal("§aEnabled §6" + eventName + "§a event drops"), true);
@@ -55,17 +72,22 @@ public class LootCommands {
                                 Component.literal("§cDisabled §6" + eventName + "§c event drops"), true);
                         }
                         
-                        return 1;
+                        return 1; // Command succeeded
                     })
                 )
             )
-            // Add dropchance under event command
+            // Drop chance event subcommand - /lootdrops event dropchance <true|false>
+            // Used to enable or disable the double drop chance event
             .then(Commands.literal("dropchance")
                 .then(Commands.argument("active", BoolArgumentType.bool())
                     .executes(context -> {
+                        // Extract command arguments
                         boolean active = BoolArgumentType.getBool(context, "active");
+                        
+                        // Toggle the drop chance event
                         LootConfig.toggleDropChanceEvent(active);
                         
+                        // Send success message to the command sender
                         if (active) {
                             context.getSource().sendSuccess(() -> 
                                 Component.literal("§aEnabled drop chance bonus event - §eAll drop chances are now DOUBLED!"), true);
@@ -74,17 +96,22 @@ public class LootCommands {
                                 Component.literal("§cDisabled drop chance bonus event - Drop chances returned to normal"), true);
                         }
                         
-                        return 1;
+                        return 1; // Command succeeded
                     })
                 )
             )
-            // Add doubledrops under event command
+            // Double drops event subcommand - /lootdrops event doubledrops <true|false>
+            // Used to enable or disable the double drops event
             .then(Commands.literal("doubledrops")
                 .then(Commands.argument("active", BoolArgumentType.bool())
                     .executes(context -> {
+                        // Extract command arguments
                         boolean active = BoolArgumentType.getBool(context, "active");
+                        
+                        // Toggle the double drops event
                         LootConfig.toggleDoubleDrops(active);
                         
+                        // Send success message to the command sender
                         if (active) {
                             context.getSource().sendSuccess(() -> 
                                 Component.literal("§aEnabled double drops event - §eAll mob drops are now DOUBLED!"), true);
@@ -93,28 +120,35 @@ public class LootCommands {
                                 Component.literal("§cDisabled double drops event - Drop amounts returned to normal"), true);
                         }
                         
-                        return 1;
+                        return 1; // Command succeeded
                     })
                 )
             )
         );
         
-        // List active events subcommand
+        // List active events subcommand - /lootdrops list
+        // Shows all currently active events
         rootCommand.then(Commands.literal("list")
             .executes(context -> {
+                // Get the current state of all events
                 Set<String> activeEvents = LootConfig.getActiveEvents();
                 boolean dropChanceActive = LootConfig.isDropChanceEventActive();
                 boolean doubleDropsActive = LootConfig.isDoubleDropsActive();
                 
+                // If no events are active, show a message
                 if (activeEvents.isEmpty() && !dropChanceActive && !doubleDropsActive) {
                     context.getSource().sendSuccess(() -> 
                         Component.literal("§cNo active events"), false);
                 } else {
+                    // Build a formatted message with all active events
                     StringBuilder sb = new StringBuilder("§6Active events: ");
+                    
+                    // Add regular events
                     if (!activeEvents.isEmpty()) {
                         sb.append("§a").append(String.join("§6, §a", activeEvents));
                     }
                     
+                    // Add drop chance event if active
                     if (dropChanceActive) {
                         if (!activeEvents.isEmpty()) {
                             sb.append("§6, ");
@@ -122,6 +156,7 @@ public class LootCommands {
                         sb.append("§e§ldropchance (2x drop rates)§r");
                     }
                     
+                    // Add double drops event if active
                     if (doubleDropsActive) {
                         if (!activeEvents.isEmpty() || dropChanceActive) {
                             sb.append("§6, ");
@@ -129,24 +164,29 @@ public class LootCommands {
                         sb.append("§e§ldoubledrops (2x amounts)§r");
                     }
                     
+                    // Send the formatted message to the command sender
                     context.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
                 }
                 
-                return 1;
+                return 1; // Command succeeded
             })
         );
         
-        // Reload configuration subcommand
+        // Reload configuration subcommand - /lootdrops reload
+        // Reloads all configuration files from disk
         rootCommand.then(Commands.literal("reload")
             .executes(context -> {
+                // Reload the configuration
                 LootConfig.loadConfig();
+                
+                // Send success message to the command sender
                 context.getSource().sendSuccess(() -> 
                     Component.literal("§aReloaded Entity Loot Drops configuration"), true);
-                return 1;
+                return 1; // Command succeeded
             })
         );
         
+        // Register the command with the dispatcher
         dispatcher.register(rootCommand);
     }
 }
-

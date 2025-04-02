@@ -25,41 +25,62 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
+/**
+ * Main configuration class for the EntityLootDrops mod.
+ * Handles loading, saving, and managing custom drop configurations.
+ */
 public class LootConfig {
+    // Logger for this class
     private static final Logger LOGGER = LogManager.getLogger();
-    private static final String CONFIG_DIR = "config/EntityLootDrops";
-    private static final String NORMAL_DROPS_DIR = "normal";
-    private static final String EVENTS_DIR = "events";
-    private static final String MOBS_DIR = "mobs";
-    private static final String HOSTILE_DROPS_FILE = "hostile_drops.json";
-    private static final String[] EVENT_TYPES = {"winter", "summer", "easter", "halloween"};
     
-    private static Map<String, List<EntityDropEntry>> entityDrops = new HashMap<>(); // directory -> drops
-    private static Map<String, List<CustomDropEntry>> hostileDrops = new HashMap<>(); // directory -> drops
+    // Configuration directory paths
+    private static final String CONFIG_DIR = "config/EntityLootDrops";
+    private static final String NORMAL_DROPS_DIR = "Normal Drops";  // Directory for regular drops (always active)
+    private static final String EVENTS_DIR = "Event Drops";        // Directory for event-specific drops
+    private static final String MOBS_DIR = "Mobs";           // Subdirectory for entity-specific drops
+    private static final String HOSTILE_DROPS_FILE = "Global_Hostile_Drops.json";  // File for general hostile mob drops
+    
+    // Built-in event types
+    private static final String[] EVENT_TYPES = {"Winter", "Summer", "Easter", "Halloween"};
+    
+    // Storage for loaded drop configurations
+    private static Map<String, List<EntityDropEntry>> entityDrops = new HashMap<>(); // Maps directory name -> entity-specific drops
+    private static Map<String, List<CustomDropEntry>> hostileDrops = new HashMap<>(); // Maps directory name -> general hostile drops
+    
+    // Tracks which events are currently active
     private static Set<String> activeEvents = new HashSet<>();
-    private static boolean dropChanceEventActive = false;
-    private static boolean doubleDropsActive = false;
+    
+    // Special event flags
+    private static boolean dropChanceEventActive = false;  // When true, doubles all drop chances
+    private static boolean doubleDropsActive = false;      // When true, doubles all drop amounts
 
+    // Custom messages for event notifications
     private static Map<String, String> eventEnableMessages = new HashMap<>();
     private static Map<String, String> eventDisableMessages = new HashMap<>();
+    
+    // Default messages for special events
     private static String dropChanceEnableMessage = "§6[Events] §aDouble Drop Chance event has been enabled! §e(2x drop rates)";
     private static String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
     private static String doubleDropsEnableMessage = "§6[Events] §aDouble Drops event has been enabled! §e(2x drop amounts)";
     private static String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
 
+    /**
+     * Main method to load all configuration files.
+     * Called when the mod starts and when the reload command is used.
+     */
     public static void loadConfig() {
-        // Store current active events and dropchance state
+        // Store current active events and event states to restore them after reload
         Set<String> previousActiveEvents = new HashSet<>(activeEvents);
         boolean previousDropChanceState = dropChanceEventActive;
         boolean previousDoubleDropsState = doubleDropsActive;
         
-        // Create directories if they don't exist
+        // Create directories and default files if they don't exist
         createConfigDirectories();
         
-        // Load all drops from files
+        // Load all drop configurations from files
         loadAllDrops();
         
-        // Load message configurations
+        // Load custom message configurations
         loadMessages();
         
         // Restore active events (but only if they still exist in the config)
@@ -70,10 +91,11 @@ public class LootConfig {
             }
         }
         
-        // Restore event states
+        // Restore special event states
         dropChanceEventActive = previousDropChanceState;
         doubleDropsActive = previousDoubleDropsState;
         
+        // Log information about the loaded configuration
         LOGGER.info("Reloaded configuration: {} entity drop types, {} hostile drop types, {} active events", 
             entityDrops.size(), hostileDrops.size(), activeEvents.size());
         
@@ -86,16 +108,20 @@ public class LootConfig {
         }
     }
     
+    /**
+     * Loads all drop configurations from files.
+     * This includes normal drops and event-specific drops.
+     */
     private static void loadAllDrops() {
-        // Clear existing drops
+        // Clear existing drops to start fresh
         entityDrops.clear();
         hostileDrops.clear();
         
-        // Load normal drops
+        // Load normal drops (always active)
         Path normalDropsDir = Paths.get(CONFIG_DIR, NORMAL_DROPS_DIR);
         loadDirectoryDrops(normalDropsDir, NORMAL_DROPS_DIR);
         
-        // Load event drops
+        // Load event drops (can be toggled on/off)
         Path eventsDir = Paths.get(CONFIG_DIR, EVENTS_DIR);
         if (Files.exists(eventsDir)) {
             try {
@@ -111,74 +137,86 @@ public class LootConfig {
             }
         }
     }
-// Add this to LootConfig class
-private static final String MESSAGES_FILE = "messages.json";
 
-// Add this class to store message configurations
-public static class MessageConfig {
-    private Map<String, String> eventEnableMessages = new HashMap<>();
-    private Map<String, String> eventDisableMessages = new HashMap<>();
-    private String dropChanceEnableMessage = "§6[Events] §aDouble Drop Chance event has been enabled! §e(2x drop rates)";
-    private String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
-    private String doubleDropsEnableMessage = "§6[Events] §aDouble Drops event has been enabled! §e(2x drop amounts)";
-    private String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
-    private String _comment = "Configure broadcast messages for events";
-}
+    // Path to the messages configuration file
+    private static final String MESSAGES_FILE = "messages.json";
 
-// Add this to the loadConfig method
-private static void loadMessages() {
-    Path messagesPath = Paths.get(CONFIG_DIR, MESSAGES_FILE);
-    
-    // Create default messages file if it doesn't exist
-    if (!Files.exists(messagesPath)) {
+    /**
+     * Class to store message configurations.
+     * Used for JSON serialization/deserialization.
+     */
+    public static class MessageConfig {
+        private Map<String, String> eventEnableMessages = new HashMap<>();
+        private Map<String, String> eventDisableMessages = new HashMap<>();
+        private String dropChanceEnableMessage = "§6[Events] §aDouble Drop Chance event has been enabled! §e(2x drop rates)";
+        private String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
+        private String doubleDropsEnableMessage = "§6[Events] §aDouble Drops event has been enabled! §e(2x drop amounts)";
+        private String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
+        private String _comment = "Configure broadcast messages for events";
+    }
+
+    /**
+     * Loads custom message configurations from the messages.json file.
+     * Creates default messages if the file doesn't exist.
+     */
+    private static void loadMessages() {
+        Path messagesPath = Paths.get(CONFIG_DIR, MESSAGES_FILE);
+        
+        // Create default messages file if it doesn't exist
+        if (!Files.exists(messagesPath)) {
+            try {
+                MessageConfig defaultConfig = new MessageConfig();
+                
+                // Add default messages for built-in events
+                for (String eventType : EVENT_TYPES) {
+                    defaultConfig.eventEnableMessages.put(eventType, 
+                        "§6[Events] §a" + eventType + " event has been enabled!");
+                    defaultConfig.eventDisableMessages.put(eventType, 
+                        "§6[Events] §c" + eventType + " event has been disabled!");
+                }
+                
+                // Write the default configuration to file
+                Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                String json = gson.toJson(defaultConfig);
+                Files.write(messagesPath, json.getBytes());
+                LOGGER.info("Created default messages configuration");
+            } catch (IOException e) {
+                LOGGER.error("Failed to create default messages file", e);
+            }
+        }
+        
+        // Load messages from file
         try {
-            MessageConfig defaultConfig = new MessageConfig();
-            
-            // Add default messages for built-in events
-            for (String eventType : EVENT_TYPES) {
-                defaultConfig.eventEnableMessages.put(eventType, 
-                    "§6[Events] §a" + eventType + " event has been enabled!");
-                defaultConfig.eventDisableMessages.put(eventType, 
-                    "§6[Events] §c" + eventType + " event has been disabled!");
+            if (Files.exists(messagesPath)) {
+                String json = new String(Files.readAllBytes(messagesPath));
+                Gson gson = new Gson();
+                MessageConfig config = gson.fromJson(json, MessageConfig.class);
+                
+                if (config != null) {
+                    // Apply loaded configuration to the static fields
+                    eventEnableMessages.clear();
+                    eventEnableMessages.putAll(config.eventEnableMessages);
+                    
+                    eventDisableMessages.clear();
+                    eventDisableMessages.putAll(config.eventDisableMessages);
+                    
+                    dropChanceEnableMessage = config.dropChanceEnableMessage;
+                    dropChanceDisableMessage = config.dropChanceDisableMessage;
+                    doubleDropsEnableMessage = config.doubleDropsEnableMessage;
+                    doubleDropsDisableMessage = config.doubleDropsDisableMessage;
+                    
+                    LOGGER.info("Loaded message configurations");
+                }
             }
-            
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            String json = gson.toJson(defaultConfig);
-            Files.write(messagesPath, json.getBytes());
-            LOGGER.info("Created default messages configuration");
-        } catch (IOException e) {
-            LOGGER.error("Failed to create default messages file", e);
+        } catch (Exception e) {
+            LOGGER.error("Failed to load messages configuration", e);
         }
     }
-    
-    // Load messages from file
-    try {
-        if (Files.exists(messagesPath)) {
-            String json = new String(Files.readAllBytes(messagesPath));
-            Gson gson = new Gson();
-            MessageConfig config = gson.fromJson(json, MessageConfig.class);
-            
-            if (config != null) {
-                // Apply loaded configuration
-                eventEnableMessages.clear();
-                eventEnableMessages.putAll(config.eventEnableMessages);
-                
-                eventDisableMessages.clear();
-                eventDisableMessages.putAll(config.eventDisableMessages);
-                
-                dropChanceEnableMessage = config.dropChanceEnableMessage;
-                dropChanceDisableMessage = config.dropChanceDisableMessage;
-                doubleDropsEnableMessage = config.doubleDropsEnableMessage;
-                doubleDropsDisableMessage = config.doubleDropsDisableMessage;
-                
-                LOGGER.info("Loaded message configurations");
-            }
-        }
-    } catch (Exception e) {
-        LOGGER.error("Failed to load messages configuration", e);
-    }
-}
 
+    /**
+     * Creates the directory structure for the mod.
+     * This includes the main config directory, normal drops directory, and event directories.
+     */
     private static void createConfigDirectories() {
         try {
             // Create main config directory
@@ -197,6 +235,7 @@ private static void loadMessages() {
             Path eventsDir = Paths.get(CONFIG_DIR, EVENTS_DIR);
             Files.createDirectories(eventsDir);
             
+            // Create a directory for each event type
             for (String eventType : EVENT_TYPES) {
                 Path eventTypeDir = Paths.get(CONFIG_DIR, EVENTS_DIR, eventType);
                 Files.createDirectories(eventTypeDir);
@@ -207,6 +246,10 @@ private static void loadMessages() {
         }
     }
     
+    /**
+     * Creates a README.txt file with documentation.
+     * This file explains how to configure the mod.
+     */
     private static void createReadmeFile(Path configDir) throws IOException {
         Path readmePath = configDir.resolve("README.txt");
         if (!Files.exists(readmePath)) {
@@ -225,21 +268,21 @@ private static void loadMessages() {
             readme.append("1. Directory Structure\n");
             readme.append("----------------------\n");
             readme.append("config/entitylootdrops/\n");
-            readme.append("|-- normal/                  # Regular drops (always active)\n");
-            readme.append("|   |-- hostile_drops.json   # Drops for all hostile mobs\n");
-            readme.append("|   `-- mobs/                # Entity-specific drops\n");
+            readme.append("|-- Normal/                  # Regular drops (always active)\n");
+            readme.append("|   |-- Global_Hostile_Drops.json   # Drops for all hostile mobs\n");
+            readme.append("|   `-- Mobs/                # Entity-specific drops\n");
             readme.append("|       |-- zombie_drops.json\n");
             readme.append("|       |-- skeleton_drops.json\n");
             readme.append("|       `-- ...\n");
-            readme.append("|-- events/                  # Event-specific drops\n");
-            readme.append("    |-- winter/              # Winter event drops\n");
+            readme.append("|-- Event Drops/                  # Event-specific drops\n");
+            readme.append("    |-- Winter/              # Winter event drops\n");
             readme.append("    |   |-- hostile_drops.json\n");
-            readme.append("    |   `-- mobs/\n");
+            readme.append("    |   `-- Mobs/\n");
             readme.append("    |       |-- skeleton_ice.json\n");
             readme.append("    |       `-- ...\n");
-            readme.append("    |-- summer/              # Summer event drops\n");
-            readme.append("    |-- easter/              # Easter event drops\n");
-            readme.append("    |-- halloween/           # Halloween event drops\n");
+            readme.append("    |-- Summer/              # Summer event drops\n");
+            readme.append("    |-- Easter/              # Easter event drops\n");
+            readme.append("    |-- Halloween/           # Halloween event drops\n");
             readme.append("    `-- [custom event]/      # Custom event drops (create your own folder)\n\n");
 
             readme.append("2. Drop Configuration Format\n");
@@ -461,103 +504,186 @@ private static void loadMessages() {
         }
     }
     
+    /**
+     * Creates default drop configuration files in a directory.
+     * This includes the hostile_drops.json file and an example mob file.
+     * 
+     * @param directory The directory to create files in
+     * @param eventType The event type (null for normal drops)
+     */
     private static void createDefaultDrops(Path directory, String eventType) throws IOException {
-    // First create the mobs directory
-    Path mobsDir = directory.resolve(MOBS_DIR);
-    Files.createDirectories(mobsDir);
-    LOGGER.info("Created mobs directory at: {}", mobsDir);
-
-    // Create a simple test hostile drops file
-    Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
-    if (!Files.exists(hostileDropsPath)) {
-        List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
-        
-        // Create a comprehensive example drop for all hostile mobs
-        CustomDropEntry exampleDrop = new CustomDropEntry();
-        exampleDrop.setItemId("minecraft:diamond_sword");
-        exampleDrop.setDropChance(25.0f);
-        exampleDrop.setMinAmount(1);
-        exampleDrop.setMaxAmount(3);
-        exampleDrop.setNbtData("{display:{Name:'{\"text\":\"Ultimate Weapon\",\"color\":\"gold\"}',Lore:['{\"text\":\"Legendary drop example\",\"color\":\"purple\"}','{\"text\":\"Shows all features\",\"color\":\"gray\"}']},Enchantments:[{id:\"minecraft:sharpness\",lvl:5},{id:\"minecraft:smite\",lvl:3},{id:\"minecraft:looting\",lvl:3}]}");
-        exampleDrop.setRequiredAdvancement("minecraft:story/enter_the_nether");
-        exampleDrop.setRequiredEffect("minecraft:strength");
-        exampleDrop.setRequiredEquipment("minecraft:diamond_sword");
-        exampleDrop.setRequiredDimension("minecraft:overworld");
-        exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
-        exampleDrop.setCommandChance(100.0f);
-        exampleDrop.setComment("Complete example showing all available options");
-        defaultHostileDrops.add(exampleDrop);
-
-        // Add event-specific example if this is an event directory
-        if (eventType != null) {
-            CustomDropEntry eventDrop = new CustomDropEntry();
-            switch (eventType) {
-                case "winter":
-                    eventDrop.setItemId("minecraft:blue_ice");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Frozen Treasure\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:frost_walker\",lvl:2}]}");
-                    eventDrop.setCommand("particle minecraft:snowflake {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-                case "summer":
-                    eventDrop.setItemId("minecraft:magma_block");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Summer Heat\",\"color\":\"red\"}'},Enchantments:[{id:\"minecraft:fire_aspect\",lvl:2}]}");
-                    eventDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-                case "halloween":
-                    eventDrop.setItemId("minecraft:jack_o_lantern");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Spooky Treasure\",\"color\":\"dark_purple\"}'},Enchantments:[{id:\"minecraft:soul_speed\",lvl:3}]}");
-                    eventDrop.setCommand("particle minecraft:soul {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-                case "easter":
-                    eventDrop.setItemId("minecraft:egg");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Festive Surprise\",\"color\":\"light_purple\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3}]}");
-                    eventDrop.setCommand("particle minecraft:end_rod {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-            }
-            if (eventDrop.getItemId() != null) {
-                eventDrop.setDropChance(50.0f);
-                eventDrop.setMinAmount(1);
-                eventDrop.setMaxAmount(3);
-                eventDrop.setRequiredDimension("minecraft:overworld");
-                eventDrop.setCommandChance(100.0f);
-                eventDrop.setComment(eventType + " event example drop");
-                defaultHostileDrops.add(eventDrop);
-            }
-        }
-        
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(defaultHostileDrops);
-        Files.write(hostileDropsPath, json.getBytes());
-        LOGGER.info("Created test hostile drops at: {}", hostileDropsPath);
-    }
-
-    // Log the contents of the directory
-    LOGGER.info("Directory contents for {}", directory);
-    try {
-        Files.list(directory).forEach(path -> 
-            LOGGER.info("- {}", path.getFileName()));
-        
-        if (Files.exists(mobsDir)) {
-            LOGGER.info("Mobs directory contents:");
-            Files.list(mobsDir).forEach(path -> 
-                LOGGER.info("- {}", path.getFileName()));
-        }
-    } catch (IOException e) {
-        LOGGER.error("Error listing directory contents", e);
-    }
-}
-
+        // First create the mobs directory for entity-specific drops
+        Path mobsDir = directory.resolve(MOBS_DIR);
+        Files.createDirectories(mobsDir);
+        LOGGER.info("Created mobs directory at: {}", mobsDir);
     
-    private static void broadcastEventMessage(String message) {
-    // Get the server instance
-    MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-    if (server != null) {
-        // Send message to all players
-        server.getPlayerList().broadcastSystemMessage(
-            Component.literal(message), false);
+        // Create a hostile drops file if it doesn't exist
+        Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
+        boolean isNewHostileDropsFile = !Files.exists(hostileDropsPath);
+        
+        if (isNewHostileDropsFile) {
+            List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
+            
+            // Create a comprehensive example drop for all hostile mobs
+            CustomDropEntry exampleDrop = new CustomDropEntry();
+            exampleDrop.setItemId("minecraft:diamond_sword");
+            exampleDrop.setDropChance(25.0f);
+            exampleDrop.setMinAmount(1);
+            exampleDrop.setMaxAmount(3);
+            exampleDrop.setNbtData("{display:{Name:'{\"text\":\"Ultimate Weapon\",\"color\":\"gold\"}',Lore:['{\"text\":\"Legendary drop example\",\"color\":\"purple\"}','{\"text\":\"Shows all features\",\"color\":\"gray\"}']},Enchantments:[{id:\"minecraft:sharpness\",lvl:5},{id:\"minecraft:smite\",lvl:3},{id:\"minecraft:looting\",lvl:3}]}");
+            exampleDrop.setRequiredAdvancement("minecraft:story/enter_the_nether");
+            exampleDrop.setRequiredEffect("minecraft:strength");
+            exampleDrop.setRequiredEquipment("minecraft:diamond_sword");
+            exampleDrop.setRequiredDimension("minecraft:overworld");
+            exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
+            exampleDrop.setCommandChance(100.0f);
+            exampleDrop.setComment("Complete example showing all available options");
+            defaultHostileDrops.add(exampleDrop);
+    
+            // Add event-specific example if this is an event directory
+            if (eventType != null) {
+                CustomDropEntry eventDrop = new CustomDropEntry();
+                // Configure the drop based on the event type
+                switch (eventType) {
+                    case "Winter":
+                        eventDrop.setItemId("minecraft:blue_ice");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Frozen Treasure\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:frost_walker\",lvl:2}]}");
+                        eventDrop.setCommand("particle minecraft:snowflake {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                    case "Summer":
+                        eventDrop.setItemId("minecraft:magma_block");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Summer Heat\",\"color\":\"red\"}'},Enchantments:[{id:\"minecraft:fire_aspect\",lvl:2}]}");
+                        eventDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                    case "Halloween":
+                        eventDrop.setItemId("minecraft:jack_o_lantern");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Spooky Treasure\",\"color\":\"dark_purple\"}'},Enchantments:[{id:\"minecraft:soul_speed\",lvl:3}]}");
+                        eventDrop.setCommand("particle minecraft:soul {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                    case "Easter":
+                        eventDrop.setItemId("minecraft:egg");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Festive Surprise\",\"color\":\"light_purple\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3}]}");
+                        eventDrop.setCommand("particle minecraft:end_rod {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                }
+                if (eventDrop.getItemId() != null) {
+                    eventDrop.setDropChance(50.0f);
+                    eventDrop.setMinAmount(1);
+                    eventDrop.setMaxAmount(3);
+                    eventDrop.setRequiredDimension("minecraft:overworld");
+                    eventDrop.setCommandChance(100.0f);
+                    eventDrop.setComment(eventType + " event example drop");
+                    defaultHostileDrops.add(eventDrop);
+                }
+            }
+            
+            // Write the drops to the file
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            String json = gson.toJson(defaultHostileDrops);
+            Files.write(hostileDropsPath, json.getBytes());
+            LOGGER.info("Created test hostile drops at: {}", hostileDropsPath);
+            
+            // Only create example mob file if we just created the hostile_drops.json file
+            // This ensures the example is only generated once
+            createExampleMobFile(mobsDir, eventType);
+        }
+    
+        // Log the contents of the directory for debugging
+        LOGGER.info("Directory contents for {}", directory);
+        try {
+            Files.list(directory).forEach(path -> 
+                LOGGER.info("- {}", path.getFileName()));
+            
+            if (Files.exists(mobsDir)) {
+                LOGGER.info("Mobs directory contents:");
+                Files.list(mobsDir).forEach(path -> 
+                    LOGGER.info("- {}", path.getFileName()));
+            }
+        } catch (IOException e) {
+            LOGGER.error("Error listing directory contents", e);
+        }
     }
-}
+    
+    /**
+     * Creates an example mob drop file.
+     * This is only called when the hostile_drops.json file is first created.
+     * 
+     * @param mobsDir The mobs directory to create the file in
+     * @param eventType The event type (null for normal drops)
+     */
+    private static void createExampleMobFile(Path mobsDir, String eventType) throws IOException {
+        // Create an example mob file
+        String mobFileName = "zombie_example.json";
+        Path exampleMobPath = mobsDir.resolve(mobFileName);
+        
+        // Only create the file if it doesn't already exist
+        if (!Files.exists(exampleMobPath)) {
+            EntityDropEntry exampleMob = new EntityDropEntry();
+            exampleMob.setEntityId("minecraft:zombie");
+            exampleMob.setItemId("minecraft:emerald");
+            exampleMob.setDropChance(30.0f);
+            exampleMob.setMinAmount(1);
+            exampleMob.setMaxAmount(3);
+            
+            // Add event-specific properties if this is for an event
+            if (eventType != null) {
+                exampleMob.setComment("Example " + eventType + " event drop for zombies");
+                // Configure the drop based on the event type
+                switch (eventType) {
+                    case "Winter":
+                        exampleMob.setItemId("minecraft:snowball");
+                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Frozen Zombie Heart\",\"color\":\"aqua\"}'}}");
+                        break;
+                    case "Summer":
+                        exampleMob.setItemId("minecraft:fire_charge");
+                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Zombie Ember\",\"color\":\"red\"}'}}");
+                        break;
+                    case "Halloween":
+                        exampleMob.setItemId("minecraft:bone");
+                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Cursed Zombie Bone\",\"color\":\"dark_purple\"}'}}");
+                        break;
+                    case "Easter":
+                        exampleMob.setItemId("minecraft:rabbit_foot");
+                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Lucky Zombie Foot\",\"color\":\"light_purple\"}'}}");
+                        break;
+                    default:
+                        exampleMob.setComment("Example zombie drop configuration");
+                }
+            } else {
+                exampleMob.setComment("Example zombie drop configuration");
+            }
+            
+            // Write the example to the file
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            String json = gson.toJson(exampleMob);
+            Files.write(exampleMobPath, json.getBytes());
+            LOGGER.info("Created example mob file at: {}", exampleMobPath);
+        }
+    } // End of createExampleMobFile method
 
+    /**
+     * Broadcasts a message to all players on the server.
+     * Used when events are enabled or disabled.
+     * 
+     * @param message The message to broadcast
+     */
+    private static void broadcastEventMessage(String message) {
+        // Get the server instance
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            // Send message to all players
+            server.getPlayerList().broadcastSystemMessage(
+                Component.literal(message), false);
+        }
+    }
 
+    /**
+     * Loads drop configurations from a directory.
+     * This includes hostile_drops.json and entity-specific drops in the mobs directory.
+     * 
+     * @param directory The directory to load from
+     * @param dirKey The key to use in the maps (directory name)
+     */
     private static void loadDirectoryDrops(Path directory, String dirKey) {
         if (!Files.exists(directory)) {
             return;
@@ -608,28 +734,62 @@ private static void loadMessages() {
         }
     }
     
+    /**
+     * Gets the normal (always active) entity-specific drops.
+     * 
+     * @return A list of entity drop entries
+     */
     public static List<EntityDropEntry> getNormalDrops() {
         return entityDrops.getOrDefault(NORMAL_DROPS_DIR, Collections.emptyList());
     }
     
+    /**
+     * Gets the normal (always active) hostile mob drops.
+     * 
+     * @return A list of custom drop entries
+     */
     public static List<CustomDropEntry> getNormalHostileDrops() {
         return hostileDrops.getOrDefault(NORMAL_DROPS_DIR, Collections.emptyList());
     }
     
+    /**
+     * Gets all event-specific entity drops.
+     * 
+     * @return A map of event name -> entity drop entries
+     */
     public static Map<String, List<EntityDropEntry>> getEventDrops() {
         return entityDrops.entrySet().stream()
             .filter(e -> !e.getKey().equals(NORMAL_DROPS_DIR))
             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
     
+    /**
+     * Gets the hostile mob drops for a specific event.
+     * 
+     * @param eventName The name of the event
+     * @return A list of custom drop entries
+     */
     public static List<CustomDropEntry> getEventHostileDrops(String eventName) {
         return hostileDrops.getOrDefault(eventName, Collections.emptyList());
     }
     
+    /**
+     * Checks if an event is currently active.
+     * 
+     * @param eventName The name of the event
+     * @return True if the event is active, false otherwise
+     */
     public static boolean isEventActive(String eventName) {
         return activeEvents.contains(eventName.toLowerCase());
     }
     
+    /**
+     * Enables or disables an event.
+     * Broadcasts a message to all players.
+     * 
+     * @param eventName The name of the event
+     * @param active True to enable, false to disable
+     */
     public static void toggleEvent(String eventName, boolean active) {
         if (active) {
             activeEvents.add(eventName.toLowerCase());
@@ -646,6 +806,12 @@ private static void loadMessages() {
         }
     }
     
+    /**
+     * Enables or disables the drop chance event.
+     * When active, this doubles all drop chances.
+     * 
+     * @param active True to enable, false to disable
+     */
     public static void toggleDropChanceEvent(boolean active) {
         dropChanceEventActive = active;
         LOGGER.info("Drop chance event set to: {}", active);
@@ -656,6 +822,12 @@ private static void loadMessages() {
         }
     }
     
+    /**
+     * Enables or disables the double drops event.
+     * When active, this doubles all drop amounts.
+     * 
+     * @param active True to enable, false to disable
+     */
     public static void toggleDoubleDrops(boolean active) {
         doubleDropsActive = active;
         LOGGER.info("Double drops set to: {}", active);
@@ -666,93 +838,193 @@ private static void loadMessages() {
         }
     }
 
-    
+    /**
+     * Sets the message to display when an event is enabled.
+     * 
+     * @param eventName The name of the event
+     * @param message The message to display
+     */
     public static void setEventEnableMessage(String eventName, String message) {
-    eventEnableMessages.put(eventName.toLowerCase(), message);
-}
+        eventEnableMessages.put(eventName.toLowerCase(), message);
+    }
 
-public static void setEventDisableMessage(String eventName, String message) {
-    eventDisableMessages.put(eventName.toLowerCase(), message);
-}
+    /**
+     * Sets the message to display when an event is disabled.
+     * 
+     * @param eventName The name of the event
+     * @param message The message to display
+     */
+    public static void setEventDisableMessage(String eventName, String message) {
+        eventDisableMessages.put(eventName.toLowerCase(), message);
+    }
 
-public static void setDropChanceEnableMessage(String message) {
-    dropChanceEnableMessage = message;
-}
+    /**
+     * Sets the message to display when the drop chance event is enabled.
+     * 
+     * @param message The message to display
+     */
+    public static void setDropChanceEnableMessage(String message) {
+        dropChanceEnableMessage = message;
+    }
 
-public static void setDropChanceDisableMessage(String message) {
-    dropChanceDisableMessage = message;
-}
+    /**
+     * Sets the message to display when the drop chance event is disabled.
+     * 
+     * @param message The message to display
+     */
+    public static void setDropChanceDisableMessage(String message) {
+        dropChanceDisableMessage = message;
+    }
 
-public static void setDoubleDropsEnableMessage(String message) {
-    doubleDropsEnableMessage = message;
-}
+    /**
+     * Sets the message to display when the double drops event is enabled.
+     * 
+     * @param message The message to display
+     */
+    public static void setDoubleDropsEnableMessage(String message) {
+        doubleDropsEnableMessage = message;
+    }
 
-public static void setDoubleDropsDisableMessage(String message) {
-    doubleDropsDisableMessage = message;
-}
+    /**
+     * Sets the message to display when the double drops event is disabled.
+     * 
+     * @param message The message to display
+     */
+    public static void setDoubleDropsDisableMessage(String message) {
+        doubleDropsDisableMessage = message;
+    }
 
-// Getters for the messages
-public static String getEventEnableMessage(String eventName) {
-    return eventEnableMessages.getOrDefault(eventName.toLowerCase(), 
-        "§6[Events] §a" + eventName + " event has been enabled!");
-}
-// Add these missing getter methods to LootConfig.java
-public static String getEventDisableMessage(String eventName) {
-    return eventDisableMessages.getOrDefault(eventName.toLowerCase(), 
-        "§6[Events] §c" + eventName + " event has been disabled!");
-}
+    /**
+     * Gets the message to display when an event is enabled.
+     * 
+     * @param eventName The name of the event
+     * @return The message to display
+     */
+    public static String getEventEnableMessage(String eventName) {
+        return eventEnableMessages.getOrDefault(eventName.toLowerCase(), 
+            "§6[Events] §a" + eventName + " event has been enabled!");
+    }
 
-public static String getDropChanceEnableMessage() {
-    return dropChanceEnableMessage;
-}
+    /**
+     * Gets the message to display when an event is disabled.
+     * 
+     * @param eventName The name of the event
+     * @return The message to display
+     */
+    public static String getEventDisableMessage(String eventName) {
+        return eventDisableMessages.getOrDefault(eventName.toLowerCase(), 
+            "§6[Events] §c" + eventName + " event has been disabled!");
+    }
 
-public static String getDropChanceDisableMessage() {
-    return dropChanceDisableMessage;
-}
+    /**
+     * Gets the message to display when the drop chance event is enabled.
+     * 
+     * @return The message to display
+     */
+    public static String getDropChanceEnableMessage() {
+        return dropChanceEnableMessage;
+    }
 
-public static String getDoubleDropsEnableMessage() {
-    return doubleDropsEnableMessage;
-}
+    /**
+     * Gets the message to display when the drop chance event is disabled.
+     * 
+     * @return The message to display
+     */
+    public static String getDropChanceDisableMessage() {
+        return dropChanceDisableMessage;
+    }
 
-public static String getDoubleDropsDisableMessage() {
-    return doubleDropsDisableMessage;
-}
+    /**
+     * Gets the message to display when the double drops event is enabled.
+     * 
+     * @return The message to display
+     */
+    public static String getDoubleDropsEnableMessage() {
+        return doubleDropsEnableMessage;
+    }
 
-// Add methods to get active events and check event states
-public static Set<String> getActiveEvents() {
-    return Collections.unmodifiableSet(activeEvents);
-}
+    /**
+     * Gets the message to display when the double drops event is disabled.
+     * 
+     * @return The message to display
+     */
+    public static String getDoubleDropsDisableMessage() {
+        return doubleDropsDisableMessage;
+    }
 
-public static boolean isDropChanceEventActive() {
-    return dropChanceEventActive;
-}
+    /**
+     * Gets all currently active events.
+     * 
+     * @return A set of active event names
+     */
+    public static Set<String> getActiveEvents() {
+        return Collections.unmodifiableSet(activeEvents);
+    }
 
-public static boolean isDoubleDropsActive() {
-    return doubleDropsActive;
-}
-	
+    /**
+     * Checks if the drop chance event is active.
+     * 
+     * @return True if active, false otherwise
+     */
+    public static boolean isDropChanceEventActive() {
+        return dropChanceEventActive;
+    }
+
+    /**
+     * Checks if the double drops event is active.
+     * 
+     * @return True if active, false otherwise
+     */
+    public static boolean isDoubleDropsActive() {
+        return doubleDropsActive;
+    }
+
+/**
+ * Represents a custom drop entry for hostile mobs.
+ * This is the base class for all drop configurations.
+ */
 public static class CustomDropEntry {
-    private String itemId;
-    private float dropChance;
-    private int minAmount;
-    private int maxAmount;
-    private String nbtData; // Added field for NBT data
-    private String requiredAdvancement; // Player must have this advancement
-    private String requiredEffect;      // Player must have this effect
-    private String requiredEquipment;   // Player must have this item equipped
-    private String requiredDimension; // New field for dimension requirement
-    private String command;         // Command to execute when drop occurs
-    private float commandChance;    // Chance to execute command (0-100)
-    private String _comment; // For documentation in the JSON file
+    private String itemId;              // The Minecraft item ID (e.g., "minecraft:diamond")
+    private float dropChance;           // Percentage chance to drop (0-100)
+    private int minAmount;              // Minimum number of items to drop
+    private int maxAmount;              // Maximum number of items to drop
+    private String nbtData;             // Custom NBT data for the item (for enchantments, names, etc.)
+    private String requiredAdvancement; // Player must have this advancement to get the drop
+    private String requiredEffect;      // Player must have this potion effect to get the drop
+    private String requiredEquipment;   // Player must have this item equipped to get the drop
+    private String requiredDimension;   // Player must be in this dimension to get the drop
+    private String command;             // Command to execute when the drop occurs
+    private float commandChance;        // Percentage chance to execute the command (0-100)
+    private String _comment;            // Comment for documentation in the JSON file
     
+    /**
+     * Default constructor for Gson deserialization.
+     */
     public CustomDropEntry() {
         // Default constructor for Gson
     }
     
+    /**
+     * Constructor for a basic drop without NBT data.
+     * 
+     * @param itemId The Minecraft item ID
+     * @param dropChance Percentage chance to drop (0-100)
+     * @param minAmount Minimum number of items to drop
+     * @param maxAmount Maximum number of items to drop
+     */
     public CustomDropEntry(String itemId, float dropChance, int minAmount, int maxAmount) {
         this(itemId, dropChance, minAmount, maxAmount, null);
     }
     
+    /**
+     * Constructor for a drop with NBT data.
+     * 
+     * @param itemId The Minecraft item ID
+     * @param dropChance Percentage chance to drop (0-100)
+     * @param minAmount Minimum number of items to drop
+     * @param maxAmount Maximum number of items to drop
+     * @param nbtData Custom NBT data for the item
+     */
     public CustomDropEntry(String itemId, float dropChance, int minAmount, int maxAmount, String nbtData) {
         this.itemId = itemId;
         this.dropChance = dropChance;
@@ -762,147 +1034,324 @@ public static class CustomDropEntry {
         this.commandChance = 100.0f; // Default to 100% if command is specified
     }
     
+    /**
+     * Gets the Minecraft item ID.
+     * 
+     * @return The item ID
+     */
     public String getItemId() {
         return itemId;
     }
     
+    /**
+     * Gets the drop chance percentage.
+     * 
+     * @return The drop chance (0-100)
+     */
     public float getDropChance() {
         return dropChance;
     }
     
+    /**
+     * Gets the minimum number of items to drop.
+     * 
+     * @return The minimum amount
+     */
     public int getMinAmount() {
         return minAmount;
     }
     
+    /**
+     * Gets the maximum number of items to drop.
+     * 
+     * @return The maximum amount
+     */
     public int getMaxAmount() {
         return maxAmount;
     }
     
-    // Add getter for NBT data
+    /**
+     * Gets the custom NBT data for the item.
+     * 
+     * @return The NBT data string
+     */
     public String getNbtData() {
         return nbtData;
     }
     
-    // Getters for new fields
+    /**
+     * Gets the required advancement for the drop.
+     * 
+     * @return The advancement ID
+     */
     public String getRequiredAdvancement() {
         return requiredAdvancement;
     }
     
+    /**
+     * Gets the required potion effect for the drop.
+     * 
+     * @return The effect ID
+     */
     public String getRequiredEffect() {
         return requiredEffect;
     }
     
+    /**
+     * Gets the required equipment for the drop.
+     * 
+     * @return The equipment item ID
+     */
     public String getRequiredEquipment() {
         return requiredEquipment;
     }
 
+    /**
+     * Gets the required dimension for the drop.
+     * 
+     * @return The dimension ID
+     */
     public String getRequiredDimension() {
         return requiredDimension;
     }
     
+    /**
+     * Gets the command to execute when the drop occurs.
+     * 
+     * @return The command string
+     */
     public String getCommand() {
         return command;
     }
     
+    /**
+     * Gets the chance to execute the command.
+     * 
+     * @return The command chance percentage (0-100)
+     */
     public float getCommandChance() {
         return commandChance;
     }
 
+    /**
+     * Checks if the drop has custom NBT data.
+     * 
+     * @return True if NBT data is present
+     */
     public boolean hasNbtData() {
         return nbtData != null && !nbtData.isEmpty();
     }
     
+    /**
+     * Checks if the drop has a required advancement.
+     * 
+     * @return True if a required advancement is specified
+     */
     public boolean hasRequiredAdvancement() {
         return requiredAdvancement != null && !requiredAdvancement.isEmpty();
     }
     
+    /**
+     * Checks if the drop has a required potion effect.
+     * 
+     * @return True if a required effect is specified
+     */
     public boolean hasRequiredEffect() {
         return requiredEffect != null && !requiredEffect.isEmpty();
     }
     
+    /**
+     * Checks if the drop has required equipment.
+     * 
+     * @return True if required equipment is specified
+     */
     public boolean hasRequiredEquipment() {
         return requiredEquipment != null && !requiredEquipment.isEmpty();
     }
     
+    /**
+     * Checks if the drop has a required dimension.
+     * 
+     * @return True if a required dimension is specified
+     */
     public boolean hasRequiredDimension() {
         return requiredDimension != null && !requiredDimension.isEmpty();
     }
     
+    /**
+     * Checks if the drop has a command to execute.
+     * 
+     * @return True if a command is specified
+     */
     public boolean hasCommand() {
         return command != null && !command.isEmpty();
     }
     
-    // Add setter methods
+    /**
+     * Sets the required dimension for the drop.
+     * 
+     * @param requiredDimension The dimension ID
+     */
     public void setRequiredDimension(String requiredDimension) {
         this.requiredDimension = requiredDimension;
     }
     
+    /**
+     * Sets the Minecraft item ID.
+     * 
+     * @param itemId The item ID
+     */
     public void setItemId(String itemId) {
         this.itemId = itemId;
     }
     
+    /**
+     * Sets the drop chance percentage.
+     * 
+     * @param dropChance The drop chance (0-100)
+     */
     public void setDropChance(float dropChance) {
         this.dropChance = dropChance;
     }
     
+    /**
+     * Sets the minimum number of items to drop.
+     * 
+     * @param minAmount The minimum amount
+     */
     public void setMinAmount(int minAmount) {
         this.minAmount = minAmount;
     }
     
+    /**
+     * Sets the maximum number of items to drop.
+     * 
+     * @param maxAmount The maximum amount
+     */
     public void setMaxAmount(int maxAmount) {
         this.maxAmount = maxAmount;
     }
     
+    /**
+     * Sets the custom NBT data for the item.
+     * 
+     * @param nbtData The NBT data string
+     */
     public void setNbtData(String nbtData) {
         this.nbtData = nbtData;
     }
     
+    /**
+     * Sets the required advancement for the drop.
+     * 
+     * @param requiredAdvancement The advancement ID
+     */
     public void setRequiredAdvancement(String requiredAdvancement) {
         this.requiredAdvancement = requiredAdvancement;
     }
     
+    /**
+     * Sets the required potion effect for the drop.
+     * 
+     * @param requiredEffect The effect ID
+     */
     public void setRequiredEffect(String requiredEffect) {
         this.requiredEffect = requiredEffect;
     }
     
+    /**
+     * Sets the required equipment for the drop.
+     * 
+     * @param requiredEquipment The equipment item ID
+     */
     public void setRequiredEquipment(String requiredEquipment) {
         this.requiredEquipment = requiredEquipment;
     }
     
+    /**
+     * Sets the command to execute when the drop occurs.
+     * 
+     * @param command The command string
+     */
     public void setCommand(String command) {
         this.command = command;
     }
     
+    /**
+     * Sets the chance to execute the command.
+     * 
+     * @param commandChance The command chance percentage (0-100)
+     */
     public void setCommandChance(float commandChance) {
         this.commandChance = commandChance;
     }
     
+    /**
+     * Sets the comment for documentation in the JSON file.
+     * 
+     * @param comment The comment string
+     */
     public void setComment(String comment) {
         this._comment = comment;
     }
 }
 
-	public static class EntityDropEntry extends CustomDropEntry {
-    private String entityId;
+/**
+ * Represents an entity-specific drop entry.
+ * Extends CustomDropEntry to add an entity ID.
+ */
+public static class EntityDropEntry extends CustomDropEntry {
+    private String entityId;  // The Minecraft entity ID (e.g., "minecraft:zombie")
     
+    /**
+     * Default constructor for Gson deserialization.
+     */
     public EntityDropEntry() {
         // Default constructor for Gson
     }
     
+    /**
+     * Constructor for a basic entity drop without NBT data.
+     * 
+     * @param entityId The Minecraft entity ID
+     * @param itemId The Minecraft item ID
+     * @param dropChance Percentage chance to drop (0-100)
+     * @param minAmount Minimum number of items to drop
+     * @param maxAmount Maximum number of items to drop
+     */
     public EntityDropEntry(String entityId, String itemId, float dropChance, int minAmount, int maxAmount) {
         this(entityId, itemId, dropChance, minAmount, maxAmount, null);
     }
     
+    /**
+     * Constructor for an entity drop with NBT data.
+     * 
+     * @param entityId The Minecraft entity ID
+     * @param itemId The Minecraft item ID
+     * @param dropChance Percentage chance to drop (0-100)
+     * @param minAmount Minimum number of items to drop
+     * @param maxAmount Maximum number of items to drop
+     * @param nbtData Custom NBT data for the item
+     */
     public EntityDropEntry(String entityId, String itemId, float dropChance, int minAmount, int maxAmount, String nbtData) {
         super(itemId, dropChance, minAmount, maxAmount, nbtData);
         this.entityId = entityId;
     }
     
+    /**
+     * Gets the Minecraft entity ID.
+     * 
+     * @return The entity ID
+     */
     public String getEntityId() {
         return entityId;
     }
     
-    // Add setter method
+    /**
+     * Sets the Minecraft entity ID.
+     * 
+     * @param entityId The entity ID
+     */
     public void setEntityId(String entityId) {
         this.entityId = entityId;
     }
