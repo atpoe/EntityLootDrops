@@ -53,6 +53,27 @@ public class LootConfig {
     // Special event flags
     private static boolean dropChanceEventActive = false;  // When true, doubles all drop chances
     private static boolean doubleDropsActive = false;      // When true, doubles all drop amounts
+    private static boolean debugLoggingEnabled = false; // When true, enables debug logging for drop events
+    // Add these getter and setter methods
+/**
+ * Checks if debug logging is enabled.
+ * 
+ * @return True if debug logging is enabled
+ */
+public static boolean isDebugLoggingEnabled() {
+    return debugLoggingEnabled;
+}
+
+/**
+ * Enables or disables debug logging.
+ * 
+ * @param enabled True to enable logging, false to disable
+ */
+public static void setDebugLogging(boolean enabled) {
+    debugLoggingEnabled = enabled;
+    LootEventHandler.setDebugLogging(enabled);
+    LOGGER.info("Debug logging has been {}", enabled ? "enabled" : "disabled");
+}
 
     // Custom messages for event notifications
     private static Map<String, String> eventEnableMessages = new HashMap<>();
@@ -690,17 +711,46 @@ public class LootConfig {
         }
         
         try {
-            // Load hostile drops from the directory root
-            Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
-            if (Files.exists(hostileDropsPath)) {
-                String json = new String(Files.readAllBytes(hostileDropsPath));
-                Gson gson = new Gson();
-                Type listType = new TypeToken<ArrayList<CustomDropEntry>>(){}.getType();
-                List<CustomDropEntry> drops = gson.fromJson(json, listType);
-                if (drops != null && !drops.isEmpty()) {
-                    hostileDrops.put(dirKey, drops);
-                    LOGGER.debug("Loaded {} hostile drops from {}", drops.size(), dirKey);
-                }
+            // Load all JSON files from the directory root as hostile drops
+            List<CustomDropEntry> directoryHostileDrops = new ArrayList<>();
+            
+            Files.list(directory)
+                .filter(path -> path.toString().toLowerCase().endsWith(".json"))
+                .forEach(path -> {
+                    try {
+                        String json = new String(Files.readAllBytes(path));
+                        Gson gson = new Gson();
+                        
+                        // Try to parse as a list of CustomDropEntry first
+                        try {
+                            Type listType = new TypeToken<ArrayList<CustomDropEntry>>(){}.getType();
+                            List<CustomDropEntry> drops = gson.fromJson(json, listType);
+                            
+                            if (drops != null && !drops.isEmpty()) {
+                                directoryHostileDrops.addAll(drops);
+                                LOGGER.debug("Loaded {} hostile drops from {}", drops.size(), path.getFileName());
+                            }
+                        } catch (Exception e) {
+                            // If it's not a list, try to parse as a single CustomDropEntry
+                            try {
+                                CustomDropEntry entry = gson.fromJson(json, CustomDropEntry.class);
+                                if (entry != null && entry.getItemId() != null) {
+                                    directoryHostileDrops.add(entry);
+                                    LOGGER.debug("Loaded single hostile drop from {}", path.getFileName());
+                                }
+                            } catch (Exception e2) {
+                                LOGGER.error("Error parsing JSON file {}: {}", path, e2.getMessage());
+                            }
+                        }
+                    } catch (Exception e) {
+                        LOGGER.error("Error reading file {}: {}", path, e.getMessage());
+                    }
+                });
+            
+            // Add all loaded hostile drops to the map
+            if (!directoryHostileDrops.isEmpty()) {
+                hostileDrops.put(dirKey, directoryHostileDrops);
+                LOGGER.debug("Loaded a total of {} hostile drops from directory {}", directoryHostileDrops.size(), dirKey);
             }
             
             // Load entity-specific drops from the mobs subdirectory
@@ -708,16 +758,38 @@ public class LootConfig {
             if (Files.exists(mobsDir)) {
                 List<EntityDropEntry> dirDrops = new ArrayList<>();
                 Files.list(mobsDir)
-                    .filter(path -> path.toString().endsWith(".json"))
+                    .filter(path -> path.toString().toLowerCase().endsWith(".json"))
                     .forEach(path -> {
                         try {
                             String json = new String(Files.readAllBytes(path));
                             Gson gson = new Gson();
-                            EntityDropEntry entry = gson.fromJson(json, EntityDropEntry.class);
-                            if (entry != null) {
-                                dirDrops.add(entry);
-                                LOGGER.debug("Loaded entity drop: {} -> {} from {}", 
-                                    entry.getEntityId(), entry.getItemId(), path.getFileName());
+                            
+                            // Try to parse as a list of EntityDropEntry first
+                            try {
+                                Type listType = new TypeToken<ArrayList<EntityDropEntry>>(){}.getType();
+                                List<EntityDropEntry> entries = gson.fromJson(json, listType);
+                                
+                                if (entries != null && !entries.isEmpty()) {
+                                    for (EntityDropEntry entry : entries) {
+                                        if (entry.getEntityId() != null && entry.getItemId() != null) {
+                                            dirDrops.add(entry);
+                                            LOGGER.debug("Loaded entity drop: {} -> {} from {}", 
+                                                entry.getEntityId(), entry.getItemId(), path.getFileName());
+                                        }
+                                    }
+                                }
+                            } catch (Exception e) {
+                                // If it's not a list, try to parse as a single EntityDropEntry
+                                try {
+                                    EntityDropEntry entry = gson.fromJson(json, EntityDropEntry.class);
+                                    if (entry != null && entry.getEntityId() != null && entry.getItemId() != null) {
+                                        dirDrops.add(entry);
+                                        LOGGER.debug("Loaded entity drop: {} -> {} from {}", 
+                                            entry.getEntityId(), entry.getItemId(), path.getFileName());
+                                    }
+                                } catch (Exception e2) {
+                                    LOGGER.error("Error parsing JSON file {}: {}", path, e2.getMessage());
+                                }
                             }
                         } catch (Exception e) {
                             LOGGER.error("Error loading drop file {}: {}", path, e.getMessage());
@@ -734,6 +806,53 @@ public class LootConfig {
         }
     }
     
+/**
+ * Loads the active events state from file.
+ * Called during loadConfig() to restore event states.
+ */
+private static void loadActiveEventsState() {
+    try {
+        Path configDir = Paths.get(CONFIG_DIR);
+        Path stateFile = configDir.resolve("active_events.json");
+        
+        if (Files.exists(stateFile)) {
+            String json = new String(Files.readAllBytes(stateFile));
+            Gson gson = new Gson();
+            Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
+            Map<String, Object> state = gson.fromJson(json, mapType);
+            
+            if (state != null) {
+                // Restore active events
+                if (state.containsKey("activeEvents")) {
+                    activeEvents.clear();
+                    List<String> events = (List<String>) state.get("activeEvents");
+                    activeEvents.addAll(events);
+                    LOGGER.info("Restored {} active events from state file", events.size());
+                }
+                
+                // Restore special event states
+                if (state.containsKey("dropChanceEventActive")) {
+                    dropChanceEventActive = (Boolean) state.get("dropChanceEventActive");
+                    LOGGER.info("Restored drop chance event state: {}", dropChanceEventActive);
+                }
+                
+                if (state.containsKey("doubleDropsActive")) {
+                    doubleDropsActive = (Boolean) state.get("doubleDropsActive");
+                    LOGGER.info("Restored double drops event state: {}", doubleDropsActive);
+                }
+
+                if (state.containsKey("debugLoggingEnabled")) {
+                debugLoggingEnabled = (Boolean) state.get("debugLoggingEnabled");
+                LootEventHandler.setDebugLogging(debugLoggingEnabled);
+                LOGGER.info("Restored debug logging state: {}", debugLoggingEnabled);
+                }
+            }
+        }
+    } catch (Exception e) {
+        LOGGER.error("Failed to load active events state", e);
+    }
+}
+
     /**
      * Gets the normal (always active) entity-specific drops.
      * 
@@ -837,6 +956,21 @@ public class LootConfig {
             broadcastEventMessage(doubleDropsDisableMessage);
         }
     }
+
+/**
+ * Toggles an event on or off.
+ * 
+ * @param eventName The name of the event to toggle
+ * @param active Whether the event should be active
+ */
+
+/**
+ * Clears all active events.
+ */
+public static void clearActiveEvents() {
+    activeEvents.clear();
+}
+
 
     /**
      * Sets the message to display when an event is enabled.
@@ -978,7 +1112,28 @@ public class LootConfig {
     public static boolean isDoubleDropsActive() {
         return doubleDropsActive;
     }
+    public static void saveActiveEventsState() {
+        try {
+            Path configDir = Paths.get(CONFIG_DIR);
+            Path stateFile = configDir.resolve("active_events.json");
 
+            // Create a simple object to store the state
+        Map<String, Object> state = new HashMap<>();
+        state.put("activeEvents", new ArrayList<>(activeEvents));
+        state.put("dropChanceEventActive", dropChanceEventActive);
+        state.put("doubleDropsActive", doubleDropsActive);
+        state.put("debugLoggingEnabled", debugLoggingEnabled);
+        
+        // Write to file
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String json = gson.toJson(state);
+        Files.write(stateFile, json.getBytes());
+        
+        LOGGER.info("Saved active events state");
+    } catch (Exception e) {
+        LOGGER.error("Failed to save active events state", e);
+    }
+}
 /**
  * Represents a custom drop entry for hostile mobs.
  * This is the base class for all drop configurations.
@@ -1001,6 +1156,7 @@ public static class CustomDropEntry {
      * Default constructor for Gson deserialization.
      */
     public CustomDropEntry() {
+        this.commandChance = 100.0f; // Default to 100% if command is specified
         // Default constructor for Gson
     }
     

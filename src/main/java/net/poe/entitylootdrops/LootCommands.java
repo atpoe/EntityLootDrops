@@ -9,10 +9,14 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.poe.entitylootdrops.config.ModConfig;
 
 /**
  * Command handler for the EntityLootDrops mod.
@@ -63,6 +67,14 @@ public class LootCommands {
                         // Toggle the event state
                         LootConfig.toggleEvent(eventName, active);
                         
+                        // Sync changes to Forge config
+                        boolean syncSuccess = ModConfig.syncFromLootConfig();
+                        if (!syncSuccess && ModConfig.isConfigLoaded()) {
+                        
+                        // Only show warning if config should be loaded by now
+                        context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                        }
+                        
                         // Send success message to the command sender
                         if (active) {
                             context.getSource().sendSuccess(() -> 
@@ -86,6 +98,12 @@ public class LootCommands {
                         
                         // Toggle the drop chance event
                         LootConfig.toggleDropChanceEvent(active);
+                        
+                        // Sync changes to Forge config
+                        boolean syncSuccess = ModConfig.syncFromLootConfig();
+                        if (!syncSuccess) {
+                            context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                        }
                         
                         // Send success message to the command sender
                         if (active) {
@@ -111,6 +129,12 @@ public class LootCommands {
                         // Toggle the double drops event
                         LootConfig.toggleDoubleDrops(active);
                         
+                        // Sync changes to Forge config
+                        boolean syncSuccess = ModConfig.syncFromLootConfig();
+                        if (!syncSuccess) {
+                            context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                        }
+                        
                         // Send success message to the command sender
                         if (active) {
                             context.getSource().sendSuccess(() -> 
@@ -126,6 +150,36 @@ public class LootCommands {
             )
         );
         
+        // Debug logging toggle subcommand - /lootdrops debug <true|false>
+        rootCommand.then(Commands.literal("debug")
+            .then(Commands.argument("enabled", BoolArgumentType.bool())
+                .executes(context -> {
+                    // Extract command arguments
+                    boolean enabled = BoolArgumentType.getBool(context, "enabled");
+                    
+                    // Toggle debug logging
+                    LootConfig.setDebugLogging(enabled);
+                    
+                    // Sync changes to Forge config
+                    boolean syncSuccess = ModConfig.syncFromLootConfig();
+                    if (!syncSuccess) {
+                        context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                    }
+                    
+                    // Send success message to the command sender
+                    if (enabled) {
+                        context.getSource().sendSuccess(() -> 
+                            Component.literal("§aEnabled debug logging - §eDetailed drop information will be logged"), true);
+                    } else {
+                        context.getSource().sendSuccess(() -> 
+                            Component.literal("§cDisabled debug logging - Only errors will be logged"), true);
+                    }
+                    
+                    return 1; // Command succeeded
+                })
+            )
+        );
+        
         // List active events subcommand - /lootdrops list
         // Shows all currently active events
         rootCommand.then(Commands.literal("list")
@@ -134,14 +188,15 @@ public class LootCommands {
                 Set<String> activeEvents = LootConfig.getActiveEvents();
                 boolean dropChanceActive = LootConfig.isDropChanceEventActive();
                 boolean doubleDropsActive = LootConfig.isDoubleDropsActive();
+                boolean debugLoggingActive = LootConfig.isDebugLoggingEnabled();
                 
-                // If no events are active, show a message
-                if (activeEvents.isEmpty() && !dropChanceActive && !doubleDropsActive) {
+                // If no events are active and debug logging is off, show a message
+                if (activeEvents.isEmpty() && !dropChanceActive && !doubleDropsActive && !debugLoggingActive) {
                     context.getSource().sendSuccess(() -> 
-                        Component.literal("§cNo active events"), false);
+                        Component.literal("§cNo active events or features"), false);
                 } else {
                     // Build a formatted message with all active events
-                    StringBuilder sb = new StringBuilder("§6Active events: ");
+                    StringBuilder sb = new StringBuilder("§6Active events and features: ");
                     
                     // Add regular events
                     if (!activeEvents.isEmpty()) {
@@ -164,9 +219,47 @@ public class LootCommands {
                         sb.append("§e§ldoubledrops (2x amounts)§r");
                     }
                     
+                    // Add debug logging if active
+                    if (debugLoggingActive) {
+                        if (!activeEvents.isEmpty() || dropChanceActive || doubleDropsActive) {
+                            sb.append("§6, ");
+                        }
+                        sb.append("§b§ldebug logging§r");
+                    }
+                    
                     // Send the formatted message to the command sender
                     context.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
                 }
+                
+                return 1; // Command succeeded
+            })
+        );
+        
+        // Open config screen subcommand - /lootdrops openconfig
+        // Opens the Forge config screen for the mod
+        rootCommand.then(Commands.literal("openconfig")
+            .executes(context -> {
+                // This command can only be executed by a player
+                if (!(context.getSource().getEntity() instanceof ServerPlayer)) {
+                    context.getSource().sendFailure(Component.literal("This command can only be used by a player"));
+                    return 0;
+                }
+                
+                ServerPlayer player = (ServerPlayer) context.getSource().getEntity();
+                
+                // Send a message to the player
+                context.getSource().sendSuccess(() -> 
+                    Component.literal("§aOpening configuration screen..."), false);
+                
+                // We can't directly open the screen from server code, so we'll send a command
+                // that the client can intercept with an event handler
+                player.sendSystemMessage(Component.literal("§a[EntityLootDrops] §eClick here to open config")
+                    .withStyle(style -> style
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/lootdrops_openconfig_client"))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, 
+                            Component.literal("Click to open configuration screen")))
+                    )
+                );
                 
                 return 1; // Command succeeded
             })
@@ -178,6 +271,12 @@ public class LootCommands {
             .executes(context -> {
                 // Reload the configuration
                 LootConfig.loadConfig();
+                
+                // Sync changes to Forge config
+                boolean syncSuccess = ModConfig.syncFromLootConfig();
+                if (!syncSuccess) {
+                    context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                }
                 
                 // Send success message to the command sender
                 context.getSource().sendSuccess(() -> 

@@ -41,6 +41,39 @@ public class LootEventHandler {
     private static final Logger LOGGER = LogManager.getLogger();
     // Random number generator for drop chances and amounts
     private static final Random RANDOM = new Random();
+    // Flag to control debug logging
+    private static boolean debugLoggingEnabled = false;
+    
+    /**
+     * Enables or disables debug logging.
+     * 
+     * @param enabled True to enable logging, false to disable
+     */
+    public static void setDebugLogging(boolean enabled) {
+        debugLoggingEnabled = enabled;
+        LOGGER.info("Debug logging has been {}", enabled ? "enabled" : "disabled");
+    }
+    
+    /**
+     * Checks if debug logging is enabled.
+     * 
+     * @return True if debug logging is enabled
+     */
+    public static boolean isDebugLoggingEnabled() {
+        return debugLoggingEnabled;
+    }
+    
+    /**
+     * Logs a debug message if debug logging is enabled.
+     * 
+     * @param message The message format string
+     * @param params The message parameters
+     */
+    private static void logDebug(String message, Object... params) {
+        if (debugLoggingEnabled) {
+            LOGGER.debug(message, params);
+        }
+    }
     
     /**
      * Main event handler for entity drops.
@@ -55,6 +88,53 @@ public class LootEventHandler {
         // Only process drops if a player killed the entity
         if (!(event.getSource().getEntity() instanceof Player)) {
             return;
+        }
+        
+        // If drop chance event is active, potentially duplicate vanilla drops to simulate increased chance
+        if (LootConfig.isDropChanceEventActive()) {
+            List<ItemEntity> additionalDrops = new ArrayList<>();
+            
+            // For each vanilla drop, there's a 50% chance to add another one (simulating 2x drop chance)
+            event.getDrops().forEach(itemEntity -> {
+                // 50% chance to add another copy of this drop
+                if (RANDOM.nextFloat() < 0.5f) {
+                    ItemStack originalStack = itemEntity.getItem();
+                    
+                    // Create a new stack with the same amount
+                    ItemStack duplicateStack = new ItemStack(
+                        originalStack.getItem(),
+                        originalStack.getCount()
+                    );
+                    
+                    // Copy NBT data if present
+                    if (originalStack.hasTag()) {
+                        duplicateStack.setTag(originalStack.getTag().copy());
+                    }
+                    
+                    // Create a new item entity with the duplicate stack
+                    ItemEntity duplicateEntity = new ItemEntity(
+                        itemEntity.level(),
+                        itemEntity.getX(),
+                        itemEntity.getY(),
+                        itemEntity.getZ(),
+                        duplicateStack
+                    );
+                    
+                    // Copy motion from original
+                    duplicateEntity.setDeltaMovement(itemEntity.getDeltaMovement());
+                    
+                    // Set pickup delay using the correct method
+                    duplicateEntity.setDefaultPickUpDelay();
+                    
+                    additionalDrops.add(duplicateEntity);
+                    
+                    logDebug("Added extra vanilla drop for {} due to drop chance event", 
+                        ForgeRegistries.ITEMS.getKey(originalStack.getItem()));
+                }
+            });
+            
+            // Add the additional drops to the event
+            event.getDrops().addAll(additionalDrops);
         }
         
         // If double drops is active, double the amount of vanilla drops
@@ -93,7 +173,7 @@ public class LootEventHandler {
                 
                 doubledDrops.add(doubledEntity);
                 
-                LOGGER.debug("Doubled vanilla drop amount for {} to {}", 
+                logDebug("Doubled vanilla drop amount for {} to {}", 
                     ForgeRegistries.ITEMS.getKey(originalStack.getItem()), 
                     doubledStack.getCount());
             });
@@ -187,11 +267,11 @@ public class LootEventHandler {
                 
                 // Skip if player is not in the required dimension
                 if (!playerDimension.toString().equals(requiredDimension)) {
-                    LOGGER.debug("Skipping drop {} - wrong dimension (player in {}, required {})", 
+                    logDebug("Skipping drop {} - wrong dimension (player in {}, required {})", 
                         drop.getItemId(), playerDimension, requiredDimension);
                     return;
                 }
-                LOGGER.debug("Dimension requirement met for {}: {}", drop.getItemId(), requiredDimension);
+                logDebug("Dimension requirement met for {}: {}", drop.getItemId(), requiredDimension);
             }
             
             // Check advancement requirement
@@ -199,47 +279,58 @@ public class LootEventHandler {
                 ServerPlayer serverPlayer = (ServerPlayer) player;
                 ResourceLocation advancement = new ResourceLocation(drop.getRequiredAdvancement());
                 if (!hasAdvancement(serverPlayer, advancement)) {
-                    LOGGER.debug("Skipping drop {} - missing advancement {}", 
+                    logDebug("Skipping drop {} - missing advancement {}", 
                         drop.getItemId(), advancement);
                     return;
                 }
-                LOGGER.debug("Advancement requirement met for {}: {}", drop.getItemId(), advancement);
+                logDebug("Advancement requirement met for {}: {}", drop.getItemId(), advancement);
             }
             
             // Check potion effect requirement
             if (drop.hasRequiredEffect()) {
                 if (!hasEffect(player, drop.getRequiredEffect())) {
-                    LOGGER.debug("Skipping drop {} - missing effect {}", 
+                    logDebug("Skipping drop {} - missing effect {}", 
                         drop.getItemId(), drop.getRequiredEffect());
                     return;
                 }
-                LOGGER.debug("Effect requirement met for {}: {}", drop.getItemId(), drop.getRequiredEffect());
+                logDebug("Effect requirement met for {}: {}", drop.getItemId(), drop.getRequiredEffect());
             }
             
             // Check equipment requirement
             if (drop.hasRequiredEquipment()) {
                 if (!hasEquipment(player, drop.getRequiredEquipment())) {
-                    LOGGER.debug("Skipping drop {} - missing equipment {}", 
+                    logDebug("Skipping drop {} - missing equipment {}", 
                         drop.getItemId(), drop.getRequiredEquipment());
                     return;
                 }
-                LOGGER.debug("Equipment requirement met for {}: {}", drop.getItemId(), drop.getRequiredEquipment());
+                logDebug("Equipment requirement met for {}: {}", drop.getItemId(), drop.getRequiredEquipment());
             }
             
             // Calculate drop chance, applying double chance if the event is active
             float chance = drop.getDropChance();
             if (LootConfig.isDropChanceEventActive()) {
                 chance *= 2.0f;
-                LOGGER.debug("Drop chance doubled for {}: {}% -> {}%", 
+                logDebug("Drop chance doubled for {}: {}% -> {}%", 
                     drop.getItemId(), drop.getDropChance(), chance);
             }
             
             // Execute command if specified and chance check passes
             if (drop.hasCommand() && player instanceof ServerPlayer) {
                 float cmdChance = drop.getCommandChance();
-                if (RANDOM.nextFloat() * 100 <= cmdChance) {
-                    executeCommand(drop.getCommand(), (ServerPlayer) player, event.getEntity());
-                    LOGGER.debug("Executed command for {} with {}% chance", drop.getItemId(), cmdChance);
+        
+                // Skip command execution if chance is explicitly set to 0
+                if (cmdChance <= 0) {
+                    logDebug("Skipping command execution for {} - command chance is {}%", 
+                        drop.getItemId(), cmdChance);
+                } else {
+                    // Roll for command chance (default is 100% if not specified)
+                    boolean executeCmd = RANDOM.nextFloat() * 100 <= cmdChance;
+                    logDebug("Command chance roll for {}: {}% - Result: {}", 
+                        drop.getItemId(), cmdChance, executeCmd ? "EXECUTE" : "SKIP");
+            
+                    if (executeCmd) {
+                        executeCommand(drop.getCommand(), (ServerPlayer) player, event.getEntity());
+                    }
                 }
             }
             
@@ -258,7 +349,7 @@ public class LootEventHandler {
                     // Double the amount if double drops is active
                     if (LootConfig.isDoubleDropsActive()) {
                         amount *= 2;
-                        LOGGER.debug("Doubled drop amount for {} to {}", drop.getItemId(), amount);
+                        logDebug("Doubled drop amount for {} to {}", drop.getItemId(), amount);
                     }
                     
                     // Create the item stack
@@ -269,7 +360,7 @@ public class LootEventHandler {
                         try {
                             CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
                             stack.setTag(nbt);
-                            LOGGER.debug("Applied NBT data to {}: {}", drop.getItemId(), drop.getNbtData());
+                            logDebug("Applied NBT data to {}: {}", drop.getItemId(), drop.getNbtData());
                         } catch (CommandSyntaxException e) {
                             LOGGER.error("Invalid NBT format for {}: {}", drop.getItemId(), e.getMessage());
                         }
@@ -280,10 +371,10 @@ public class LootEventHandler {
                     
                     // Log the drop
                     if (LootConfig.isDropChanceEventActive()) {
-                        LOGGER.debug("Dropped {} x{} (doubled chance: {}%)", 
+                        logDebug("Dropped {} x{} (doubled chance: {}%)", 
                             drop.getItemId(), amount, chance);
                     } else {
-                        LOGGER.debug("Dropped {} x{} (chance: {}%)", 
+                        logDebug("Dropped {} x{} (chance: {}%)", 
                             drop.getItemId(), amount, chance);
                     }
                 } else {
@@ -358,35 +449,53 @@ public class LootEventHandler {
     private static void executeCommand(String command, ServerPlayer player, LivingEntity killedEntity) {
         try {
             MinecraftServer server = player.getServer();
-            if (server == null) return;
+            if (server == null) {
+                LOGGER.error("Failed to execute command: server is null");
+                return;
+            }
             
             ServerLevel level = (ServerLevel) player.level();
             
-            // Replace placeholders in the command with actual values
-            String processedCommand = command
-                .replace("{player}", player.getName().getString())
-                .replace("{player_x}", String.format("%.2f", player.getX()))
-                .replace("{player_y}", String.format("%.2f", player.getY()))
-                .replace("{player_z}", String.format("%.2f", player.getZ()))
-                .replace("{entity}", killedEntity.getName().getString())
-                .replace("{entity_id}", ForgeRegistries.ENTITY_TYPES.getKey(killedEntity.getType()).toString())
-                .replace("{entity_x}", String.format("%.2f", killedEntity.getX()))
-                .replace("{entity_y}", String.format("%.2f", killedEntity.getY()))
-                .replace("{entity_z}", String.format("%.2f", killedEntity.getZ()));
+            // Split the command by newlines to handle multiple commands
+            // Handle both \n and \\n formats
+            String[] commands = command.replace("\\n", "\n").split("\n");
             
-            // Create a command source with the player's position and permissions
-            CommandSourceStack source = server.createCommandSourceStack()
-                .withPosition(Vec3.atCenterOf(killedEntity.blockPosition()))
-                .withRotation(Vec2.ZERO)
-                .withLevel(level)
-                .withPermission(4)  // Op level 4 (highest) to ensure command can execute
-                .withEntity(player);
-            
-            // Execute the command
-            server.getCommands().performPrefixedCommand(source, processedCommand);
-            LOGGER.debug("Executed command on mob death: {}", processedCommand);
+            for (String singleCommand : commands) {
+                if (singleCommand.trim().isEmpty()) {
+                    continue;
+                }
+                
+                // Replace placeholders in the command with actual values
+                String processedCommand = singleCommand
+                    .replace("{player}", player.getName().getString())
+                    .replace("{player_x}", String.format("%.2f", player.getX()))
+                    .replace("{player_y}", String.format("%.2f", player.getY()))
+                    .replace("{player_z}", String.format("%.2f", player.getZ()))
+                    .replace("{entity}", killedEntity.getName().getString())
+                    .replace("{entity_id}", ForgeRegistries.ENTITY_TYPES.getKey(killedEntity.getType()).toString())
+                    .replace("{entity_x}", String.format("%.2f", killedEntity.getX()))
+                    .replace("{entity_y}", String.format("%.2f", killedEntity.getY()))
+                    .replace("{entity_z}", String.format("%.2f", killedEntity.getZ()));
+                
+                // Create a command source with the player's position and permissions
+                CommandSourceStack source = server.createCommandSourceStack()
+                    .withPosition(Vec3.atCenterOf(killedEntity.blockPosition()))
+                    .withRotation(Vec2.ZERO)
+                    .withLevel(level)
+                    .withPermission(4)  // Op level 4 (highest) to ensure command can execute
+                    .withEntity(player);
+                
+                // Execute the command
+                try {
+                    logDebug("Attempting to execute command: {}", processedCommand);
+                    server.getCommands().performPrefixedCommand(source, processedCommand);
+                    logDebug("Successfully executed command: {}", processedCommand);
+                } catch (Exception e) {
+                    LOGGER.error("Error executing command '{}': {}", processedCommand, e.getMessage());
+                }
+            }
         } catch (Exception e) {
-            LOGGER.error("Failed to execute command: {} - {}", command, e.getMessage());
+            LOGGER.error("Failed to execute command: {} - {}", command, e.getMessage(), e);
         }
     }
 }
