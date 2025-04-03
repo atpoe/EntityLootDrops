@@ -74,16 +74,7 @@ public class LootCommands {
                         // Only show warning if config should be loaded by now
                         context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
                         }
-                        
-                        // Send success message to the command sender
-                        if (active) {
-                            context.getSource().sendSuccess(() -> 
-                                Component.literal("§aEnabled §6" + eventName + "§a event drops"), true);
-                        } else {
-                            context.getSource().sendSuccess(() -> 
-                                Component.literal("§cDisabled §6" + eventName + "§c event drops"), true);
-                        }
-                        
+
                         return 1; // Command succeeded
                     })
                 )
@@ -103,15 +94,6 @@ public class LootCommands {
                         boolean syncSuccess = ModConfig.syncFromLootConfig();
                         if (!syncSuccess) {
                             context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
-                        }
-                        
-                        // Send success message to the command sender
-                        if (active) {
-                            context.getSource().sendSuccess(() -> 
-                                Component.literal("§aEnabled drop chance bonus event - §eAll drop chances are now DOUBLED!"), true);
-                        } else {
-                            context.getSource().sendSuccess(() -> 
-                                Component.literal("§cDisabled drop chance bonus event - Drop chances returned to normal"), true);
                         }
                         
                         return 1; // Command succeeded
@@ -134,16 +116,6 @@ public class LootCommands {
                         if (!syncSuccess) {
                             context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
                         }
-                        
-                        // Send success message to the command sender
-                        if (active) {
-                            context.getSource().sendSuccess(() -> 
-                                Component.literal("§aEnabled double drops event - §eAll mob drops are now DOUBLED!"), true);
-                        } else {
-                            context.getSource().sendSuccess(() -> 
-                                Component.literal("§cDisabled double drops event - Drop amounts returned to normal"), true);
-                        }
-                        
                         return 1; // Command succeeded
                     })
                 )
@@ -174,7 +146,6 @@ public class LootCommands {
                         context.getSource().sendSuccess(() -> 
                             Component.literal("§cDisabled debug logging - Only errors will be logged"), true);
                     }
-                    
                     return 1; // Command succeeded
                 })
             )
@@ -230,7 +201,6 @@ public class LootCommands {
                     // Send the formatted message to the command sender
                     context.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
                 }
-                
                 return 1; // Command succeeded
             })
         );
@@ -251,13 +221,14 @@ public class LootCommands {
                 context.getSource().sendSuccess(() -> 
                     Component.literal("§aOpening configuration screen..."), false);
                 
-                // We can't directly open the screen from server code, so we'll send a command
-                // that the client can intercept with an event handler
+                // Use a direct clickEvent with a command that will be intercepted by our client handler
                 player.sendSystemMessage(Component.literal("§a[EntityLootDrops] §eClick here to open config")
                     .withStyle(style -> style
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/lootdrops_openconfig_client"))
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, 
                             Component.literal("Click to open configuration screen")))
+                        .withUnderlined(true) // Underline the text
+                        .withColor(net.minecraft.ChatFormatting.GREEN) // Use built-in ChatFormatting instead
                     )
                 );
                 

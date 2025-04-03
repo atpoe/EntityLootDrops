@@ -21,6 +21,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.ConfigScreenHandler;
@@ -57,6 +58,7 @@ public class ConfigScreen extends Screen {
     private String errorMessage = null;
     
     // Constructor should be here, right after the fields
+    private static final ResourceLocation LOGO = new ResourceLocation("entitylootdrops", "textures/logo.png");
     public ConfigScreen(Screen parentScreen) {
         super(Component.literal("Entity Loot Drops Configuration"));
         this.parentScreen = parentScreen;
@@ -74,17 +76,27 @@ public class ConfigScreen extends Screen {
         private net.minecraft.client.gui.Font fontRenderer;
         private int maxLineWidth;
         
+        // Add cursor position tracking
+        private int cursorPos = 0;
+        private int cursorLine = 0;
+        private int cursorColumn = 0;
+        private long lastCursorBlink = 0;
+        private boolean cursorVisible = true;
+        
         public MultilineEditBox(net.minecraft.client.gui.Font font, int x, int y, int width, int height, Component message) {
             super(font, x, y, width, height, message);
             this.fontRenderer = font;
             this.maxLineWidth = width - 10; // Leave some padding
+            this.lastCursorBlink = System.currentTimeMillis();
         }
         
         @Override
         public void setValue(String text) {
             super.setValue(text);
             this.fullText = text;
+            this.cursorPos = text.length(); // Set cursor at the end
             updateLines();
+            updateCursorPosition();
         }
         
         @Override
@@ -138,6 +150,47 @@ public class ConfigScreen extends Screen {
                     }
                 }
             }
+            
+            // Make sure cursor is in a valid position
+            updateCursorPosition();
+        }
+        
+        private void updateCursorPosition() {
+            // Find which line and column the cursor is at
+            int pos = 0;
+            cursorLine = 0;
+            cursorColumn = 0;
+            
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (pos + line.length() >= cursorPos) {
+                    cursorLine = i;
+                    cursorColumn = cursorPos - pos;
+                    break;
+                }
+                pos += line.length();
+                
+                // Add 1 for the newline character if not the last line
+                if (i < lines.size() - 1) {
+                    pos += 1;
+                }
+            }
+            
+            // Ensure cursor is visible by scrolling if needed
+            ensureCursorVisible();
+        }
+        
+        private void ensureCursorVisible() {
+            int visibleLines = this.height / lineHeight;
+            
+            // If cursor is above visible area, scroll up
+            if (cursorLine < scrollOffset) {
+                scrollOffset = cursorLine;
+            }
+            // If cursor is below visible area, scroll down
+            else if (cursorLine >= scrollOffset + visibleLines) {
+                scrollOffset = cursorLine - visibleLines + 1;
+            }
         }
         
         private int findBreakPoint(String text, int maxWidth) {
@@ -178,14 +231,106 @@ public class ConfigScreen extends Screen {
         public boolean charTyped(char c, int modifiers) {
             if (this.isVisible() && this.isFocused() && this.isEditableCustom()) {
                 if (c == '\n' || c == '\r') {
-                    this.fullText += "\n";
+                    insertText("\n");
                 } else {
-                    this.fullText += c;
+                    insertText(String.valueOf(c));
                 }
-                updateLines();
                 return true;
             }
             return false;
+        }
+        
+        @Override
+        public void insertText(String text) {
+        if (cursorPos < 0) cursorPos = 0;
+        if (cursorPos > fullText.length()) cursorPos = fullText.length();
+    
+        // Insert the text at the cursor position
+        this.fullText = this.fullText.substring(0, cursorPos) + text + this.fullText.substring(cursorPos);
+        cursorPos += text.length();
+        updateLines();
+        }
+        
+        private void deleteText(int count) {
+            if (cursorPos <= 0 || fullText.isEmpty()) return;
+            
+            int start = Math.max(0, cursorPos - count);
+            this.fullText = this.fullText.substring(0, start) + this.fullText.substring(cursorPos);
+            cursorPos = start;
+            updateLines();
+        }
+        
+        @Override
+        public void moveCursor(int amount) {
+        cursorPos = Math.max(0, Math.min(fullText.length(), cursorPos + amount));
+        updateCursorPosition();
+        lastCursorBlink = System.currentTimeMillis();
+        cursorVisible = true;
+        }
+        
+        private void moveCursorToLineStart() {
+            // Find the start of the current line
+            int pos = 0;
+            for (int i = 0; i < cursorLine; i++) {
+                pos += lines.get(i).length();
+                if (i < lines.size() - 1) {
+                    pos += 1; // Add 1 for newline
+                }
+            }
+            cursorPos = pos;
+            cursorColumn = 0;
+            lastCursorBlink = System.currentTimeMillis();
+            cursorVisible = true;
+        }
+        
+        private void moveCursorToLineEnd() {
+            // Find the end of the current line
+            int pos = 0;
+            for (int i = 0; i <= cursorLine; i++) {
+                pos += lines.get(i).length();
+                if (i < cursorLine) {
+                    pos += 1; // Add 1 for newline
+                }
+            }
+            cursorPos = pos;
+            cursorColumn = lines.get(cursorLine).length();
+            lastCursorBlink = System.currentTimeMillis();
+            cursorVisible = true;
+        }
+        
+        private void moveCursorVertical(int lineDelta) {
+            // Move cursor up or down by the specified number of lines
+            int targetLine = Math.max(0, Math.min(lines.size() - 1, cursorLine + lineDelta));
+            
+            if (targetLine != cursorLine) {
+                // Calculate position at the start of the current line
+                int startOfCurrentLine = 0;
+                for (int i = 0; i < cursorLine; i++) {
+                    startOfCurrentLine += lines.get(i).length();
+                    if (i < lines.size() - 1) {
+                        startOfCurrentLine += 1; // Add 1 for newline
+                    }
+                }
+                
+                // Calculate position at the start of the target line
+                int startOfTargetLine = 0;
+                for (int i = 0; i < targetLine; i++) {
+                    startOfTargetLine += lines.get(i).length();
+                    if (i < lines.size() - 1) {
+                        startOfTargetLine += 1; // Add 1 for newline
+                    }
+                }
+                
+                // Try to maintain the same column position
+                int targetColumn = Math.min(cursorColumn, lines.get(targetLine).length());
+                cursorPos = startOfTargetLine + targetColumn;
+                cursorLine = targetLine;
+                cursorColumn = targetColumn;
+                
+                ensureCursorVisible();
+                lastCursorBlink = System.currentTimeMillis();
+                cursorVisible = true;
+            }
         }
         
         @Override
@@ -199,33 +344,74 @@ public class ConfigScreen extends Screen {
                 if (this.isEditableCustom()) {
                     // Handle Enter key for adding new lines
                     if (keyCode == 257 || keyCode == 335) { // Enter or numpad Enter
-                        this.fullText += "\n";
-                        updateLines();
+                        insertText("\n");
                         return true;
                     }
                     
                     // Handle backspace for deleting characters
                     if (keyCode == 259) { // Backspace
-                        if (this.fullText.length() > 0) {
-                            this.fullText = this.fullText.substring(0, this.fullText.length() - 1);
+                        deleteText(1);
+                        return true;
+                    }
+                    
+                    // Handle delete key
+                    if (keyCode == 261) { // Delete key
+                        if (cursorPos < fullText.length()) {
+                            this.fullText = this.fullText.substring(0, cursorPos) + 
+                                            this.fullText.substring(cursorPos + 1);
                             updateLines();
                         }
                         return true;
                     }
+                    
+                    // Handle tab key for indentation
+                    if (keyCode == 258) { // Tab key
+                        insertText("    "); // 4 spaces for tab
+                        return true;
+                    }
+                    
+                    // Handle left/right arrow keys for cursor movement
+                    if (keyCode == 263) { // Left arrow
+                        moveCursor(-1);
+                        return true;
+                    }
+                    if (keyCode == 262) { // Right arrow
+                        moveCursor(1);
+                        return true;
+                    }
+                    
+                    // Handle home/end keys
+                    if (keyCode == 268) { // Home key
+                        moveCursorToLineStart();
+                        return true;
+                    }
+                    if (keyCode == 269) { // End key
+                        moveCursorToLineEnd();
+                        return true;
+                    }
                 }
                 
-                // Handle scrolling with arrow keys
+                // Handle up/down arrow keys for cursor movement
+                if (keyCode == 265) { // Up arrow
+                    moveCursorVertical(-1);
+                    return true;
+                }
                 if (keyCode == 264) { // Down arrow
-                    scrollOffset = Math.min(scrollOffset + 1, Math.max(0, lines.size() - (getHeight() / lineHeight)));
+                    moveCursorVertical(1);
                     return true;
-                } else if (keyCode == 265) { // Up arrow
-                    scrollOffset = Math.max(0, scrollOffset - 1);
+                }
+                
+                // Handle page up/down for scrolling
+                if (keyCode == 266) { // Page up
+                    int visibleLines = this.height / lineHeight;
+                    scrollOffset = Math.max(0, scrollOffset - visibleLines);
+                    moveCursorVertical(-visibleLines);
                     return true;
-                } else if (keyCode == 266) { // Page up
-                    scrollOffset = Math.max(0, scrollOffset - (getHeight() / lineHeight));
-                    return true;
-                } else if (keyCode == 267) { // Page down
-                    scrollOffset = Math.min(scrollOffset + (getHeight() / lineHeight), Math.max(0, lines.size() - (getHeight() / lineHeight)));
+                }
+                if (keyCode == 267) { // Page down
+                    int visibleLines = this.height / lineHeight;
+                    scrollOffset = Math.min(Math.max(0, lines.size() - visibleLines), scrollOffset + visibleLines);
+                    moveCursorVertical(visibleLines);
                     return true;
                 }
             }
@@ -235,9 +421,46 @@ public class ConfigScreen extends Screen {
         @Override
         public boolean mouseClicked(double mouseX, double mouseY, int button) {
             boolean result = super.mouseClicked(mouseX, mouseY, button);
+            
             // Make sure we get focus when clicked
             if (isMouseOver(mouseX, mouseY)) {
                 setFocused(true);
+                
+                // Set cursor position based on click location
+                if (this.isEditableCustom()) {
+                    int clickedLine = scrollOffset + (int)((mouseY - this.getY()) / lineHeight);
+                    if (clickedLine >= 0 && clickedLine < lines.size()) {
+                        // Calculate position at the start of the clicked line
+                        int startOfLine = 0;
+                        for (int i = 0; i < clickedLine; i++) {
+                            startOfLine += lines.get(i).length();
+                            if (i < lines.size() - 1) {
+                                startOfLine += 1; // Add 1 for newline
+                            }
+                        }
+                        
+                        // Find the closest character to the click position
+                        String line = lines.get(clickedLine);
+                        int bestPos = 0;
+                        int bestDist = Integer.MAX_VALUE;
+                        
+                        for (int i = 0; i <= line.length(); i++) {
+                            int charX = this.getX() + 4 + fontRenderer.width(line.substring(0, i));
+                            int dist = (int)Math.abs(mouseX - charX);
+                            
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestPos = i;
+                            }
+                        }
+                        
+                        cursorPos = startOfLine + bestPos;
+                        updateCursorPosition();
+                        lastCursorBlink = System.currentTimeMillis();
+                        cursorVisible = true;
+                    }
+                }
+                
                 return true;
             }
             return result;
@@ -373,16 +596,19 @@ public class ConfigScreen extends Screen {
                 
                 // Draw cursor if focused
                 if (this.isFocused() && this.isEditableCustom()) {
-                    int cursorLine = lines.size() - 1;
-                    String lastLine = lines.get(cursorLine);
-                    int cursorX = this.getX() + 4 + this.fontRenderer.width(lastLine);
-                    int cursorY = this.getY() + (cursorLine - scrollOffset) * lineHeight + 5;
+                    // Update cursor blink state
+                    if (System.currentTimeMillis() - lastCursorBlink > 500) {
+                        cursorVisible = !cursorVisible;
+                        lastCursorBlink = System.currentTimeMillis();
+                    }
                     
-                    // Only draw cursor if the line is visible
-                    if (cursorLine >= scrollOffset && cursorLine < endLine) {
-                        if ((System.currentTimeMillis() / 500) % 2 == 0) {
-                            guiGraphics.fill(cursorX, cursorY, cursorX + 1, cursorY + 10, -3092272);
-                        }
+                    // Only draw cursor if it's in the visible state and the line is visible
+                    if (cursorVisible && cursorLine >= scrollOffset && cursorLine < endLine) {
+                        String lineBeforeCursor = lines.get(cursorLine).substring(0, cursorColumn);
+                        int cursorX = this.getX() + 4 + this.fontRenderer.width(lineBeforeCursor);
+                        int cursorY = this.getY() + (cursorLine - scrollOffset) * lineHeight + 5;
+                        
+                        guiGraphics.fill(cursorX, cursorY, cursorX + 1, cursorY + 10, -3092272);
                     }
                 }
             }
