@@ -1,9 +1,0 @@
-{
-    "java.configuration.updateBuildConfiguration": "automatic",
-    "java.compile.nullAnalysis.mode": "disabled",
-    "CodeGPT.apiKey": "CodeGPT Plus Beta",
-    "cSpell.words": [
-        "Behaviour",
-        "manafurnace"
-    ]
-}
