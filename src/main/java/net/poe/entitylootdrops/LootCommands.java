@@ -153,7 +153,7 @@ public class LootCommands {
         
         // List active events subcommand - /lootdrops list
         // Shows all currently active events
-        rootCommand.then(Commands.literal("list")
+        rootCommand.then(Commands.literal("active_events")
             .executes(context -> {
                 // Get the current state of all events
                 Set<String> activeEvents = LootConfig.getActiveEvents();
@@ -205,6 +205,26 @@ public class LootCommands {
             })
         );
         
+        rootCommand.then(Commands.literal("listall")
+        .executes(context -> {
+        // Get all available events
+        Set<String> availableEvents = LootConfig.getEventDrops().keySet();
+        
+        if (availableEvents.isEmpty()) {
+            context.getSource().sendSuccess(() -> 
+                Component.literal("§cNo events available"), false);
+        } else {
+            // Build a formatted message with all available events
+            StringBuilder sb = new StringBuilder("§6Available events: §a");
+            sb.append(String.join("§6, §a", availableEvents));
+            
+            // Send the formatted message to the command sender
+            context.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
+        }
+        return 1; // Command succeeded
+    })
+);
+
         // Open config screen subcommand - /lootdrops openconfig
         // Opens the Forge config screen for the mod
         rootCommand.then(Commands.literal("openconfig")

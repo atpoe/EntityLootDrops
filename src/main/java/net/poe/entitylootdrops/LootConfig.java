@@ -466,11 +466,13 @@ public static void setDebugLogging(boolean enabled) {
             readme.append("- /lootdrops event <eventName> false   - Disable an event\n");
             readme.append("- /lootdrops event dropchance true     - Enable 2x drop chance bonus\n");
             readme.append("- /lootdrops event dropchance false    - Disable drop chance bonus\n\n");
-            readme.append("- /lootdrops event doubledrops true     - Enable 2x item drops bonus\n");
-            readme.append("- /lootdrops event doubledrops false    - Disable item drop bonus\n\n");
+            readme.append("- /lootdrops event doubledrops true    - Enable 2x item drops bonus\n");
+            readme.append("- /lootdrops event doubledrops false   - Disable item drop bonus\n\n");
             
             readme.append("B. Information Commands:\n");
-            readme.append("- /lootdrops list                      - List all active events\n");
+            readme.append("- /lootdrops active_events             - List all active events\n");
+            readme.append("- /lootdrops listall                   - List all available events\n");
+            readme.append("- /lootdrops openconfig                - Opens custom JSON editor menu\n");
             readme.append("- /lootdrops reload                    - Reload all configuration files\n");
             readme.append("- /lootdrops help                      - Show command help\n\n");
             
@@ -480,10 +482,10 @@ public static void setDebugLogging(boolean enabled) {
             readme.append("- /lootdrops event mycustomevent true  - Enable a custom event\n\n");
             
             readme.append("D. Permissions:\n");
-            readme.append("- entitylootdrops.command.event       - Permission to enable/disable events\n");
-            readme.append("- entitylootdrops.command.list        - Permission to list active events\n");
-            readme.append("- entitylootdrops.command.reload      - Permission to reload configurations\n");
-            readme.append("- entitylootdrops.command.admin       - Permission for all commands\n\n");
+            readme.append("- entitylootdrops.command.event        - Permission to enable/disable events\n");
+            readme.append("- entitylootdrops.command.list         - Permission to list active events\n");
+            readme.append("- entitylootdrops.command.reload       - Permission to reload configurations\n");
+            readme.append("- entitylootdrops.command.admin        - Permission for all commands\n\n");
             
             readme.append("8. Events System\n");
             readme.append("-------------\n");
@@ -518,8 +520,11 @@ public static void setDebugLogging(boolean enabled) {
             readme.append("2. Missing Quotes: All strings need double quotes\n");
             readme.append("3. Wrong IDs: Verify Minecraft IDs are correct (include \"minecraft:\" prefix)\n");
             readme.append("4. Command Errors: Test commands in-game first\n");
-            readme.append("5. Case Sensitivity: IDs and commands are case-sensitive\n\n");
-                        
+            readme.append("5. Case Sensitivity: IDs and commands are case-sensitive\n");
+            readme.append("6. Custom Events: Inside your custom event folder, you MUST have at least one of these:\n");
+            readme.append("-  A Global_Hostile_Drops.json file for drops that apply to all hostile mobs\n");
+            readme.append("-  A Mobs folder with entity-specific drop files\n\n");
+
             Files.write(readmePath, readme.toString().getBytes());
             LOGGER.info("Created README.txt in config directory");
         }
@@ -912,17 +917,31 @@ private static void loadActiveEventsState() {
      * @param active True to enable, false to disable
      */
     public static void toggleEvent(String eventName, boolean active) {
+        // Find the actual case-preserved event name from the map
+        String actualEventName = null;
+        for (String key : getEventDrops().keySet()) {
+            if (key.equalsIgnoreCase(eventName)) {
+                actualEventName = key;
+                break;
+            }
+        }
+        
+        // If the event doesn't exist in our map, use the provided name
+        if (actualEventName == null) {
+            actualEventName = eventName;
+        }
+        
         if (active) {
-            activeEvents.add(eventName.toLowerCase());
-            LOGGER.info("Enabled event: {}", eventName);
-            String message = eventEnableMessages.getOrDefault(eventName.toLowerCase(), 
-                "§6[Events] §a" + eventName + " event has been enabled!");
+            activeEvents.add(actualEventName.toLowerCase());
+            LOGGER.info("Enabled event: {}", actualEventName);
+            String message = eventEnableMessages.getOrDefault(actualEventName.toLowerCase(), 
+                "§6[Events] §a" + actualEventName + " event has been enabled!");
             broadcastEventMessage(message);
         } else {
-            activeEvents.remove(eventName.toLowerCase());
-            LOGGER.info("Disabled event: {}", eventName);
-            String message = eventDisableMessages.getOrDefault(eventName.toLowerCase(), 
-                "§6[Events] §c" + eventName + " event has been disabled!");
+            activeEvents.remove(actualEventName.toLowerCase());
+            LOGGER.info("Disabled event: {}", actualEventName);
+            String message = eventDisableMessages.getOrDefault(actualEventName.toLowerCase(), 
+                "§6[Events] §c" + actualEventName + " event has been disabled!");
             broadcastEventMessage(message);
         }
     }
