@@ -135,9 +135,6 @@ Reading Input: C:\Users\imaid\Documents\Minecraft Mods\EntityLootDrops\build\lib
 Adding input to inheritance map
 Processing entries
 Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen/keyPressed(III)Z from net/minecraft/client/gui/screens/Screen/keyPressed(III)Z: keyPressed -> m_7933_
-Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen/render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V from net/minecraft/client/gui/screens/Screen/render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V: render -> m_88315_
-Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen/init()V from net/minecraft/client/gui/screens/Screen/init()V: init -> m_7856_
-Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen/shouldCloseOnEsc()Z from net/minecraft/client/gui/screens/Screen/shouldCloseOnEsc()Z: shouldCloseOnEsc -> m_6913_
 Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen$MultilineEditBox/keyPressed(III)Z from net/minecraft/client/gui/components/EditBox/keyPressed(III)Z: keyPressed -> m_7933_
 Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen$MultilineEditBox/deleteText(I)V from net/minecraft/client/gui/components/EditBox/deleteText(I)V: deleteText -> m_94217_
 Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen$MultilineEditBox/renderWidget(Lnet/minecraft/client/gui/GuiGraphics;IIF)V from net/minecraft/client/gui/components/EditBox/renderWidget(Lnet/minecraft/client/gui/GuiGraphics;IIF)V: renderWidget -> m_87963_
@@ -149,6 +146,9 @@ Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen$Mult
 Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen$MultilineEditBox/getValue()Ljava/lang/String; from net/minecraft/client/gui/components/EditBox/getValue()Ljava/lang/String;: getValue -> m_94155_
 Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen$MultilineEditBox/charTyped(CI)Z from net/minecraft/client/gui/components/EditBox/charTyped(CI)Z: charTyped -> m_5534_
 Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen$MultilineEditBox/setEditable(Z)V from net/minecraft/client/gui/components/EditBox/setEditable(Z)V: setEditable -> m_94186_
+Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen/render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V from net/minecraft/client/gui/screens/Screen/render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V: render -> m_88315_
+Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen/init()V from net/minecraft/client/gui/screens/Screen/init()V: init -> m_7856_
+Conflicting propagated mapping for net/poe/entitylootdrops/gui/ConfigScreen/shouldCloseOnEsc()Z from net/minecraft/client/gui/screens/Screen/shouldCloseOnEsc()Z: shouldCloseOnEsc -> m_6913_
 Conflicting propagated mapping for net/minecraft/world/entity/LivingEntity/lambda$addAdditionalSaveData$3(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/nbt/Tag;)V from net/minecraft/world/entity/player/Player/lambda$addAdditionalSaveData$3(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/nbt/Tag;)V: lambda$addAdditionalSaveData$3 -> m_219754_
 Adding extras
 Sorting

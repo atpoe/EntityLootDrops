@@ -201,19 +201,30 @@ public class LootEventHandler {
             processDrops(event, LootConfig.getNormalHostileDrops(), player);
         }
         
-        // Process event-specific drops for all active events
-        for (String eventName : LootConfig.getActiveEvents()) {
-            // Process entity-specific drops for this event
-            List<LootConfig.EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(eventName);
-            if (eventDropList != null) {
-                processEntityDrops(event, entityIdStr, eventDropList, player);
-            }
-            
-            // Process hostile mob drops for this event if this is a hostile entity
-            if (isHostile) {
-                processDrops(event, LootConfig.getEventHostileDrops(eventName), player);
-            }
+    // Process event-specific drops for all active events
+for (String eventName : LootConfig.getActiveEvents()) {
+    // Find the matching event name in the event drops map (case-insensitive)
+    String matchingEventName = null;
+    for (String key : LootConfig.getEventDrops().keySet()) {
+        if (key.equalsIgnoreCase(eventName)) {
+            matchingEventName = key;
+            break;
         }
+    }
+    
+    // Process entity-specific drops for this event
+    if (matchingEventName != null) {
+        List<LootConfig.EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(matchingEventName);
+        if (eventDropList != null) {
+            processEntityDrops(event, entityIdStr, eventDropList, player);
+        }
+        
+        // Process hostile mob drops for this event if this is a hostile entity
+        if (isHostile) {
+            processDrops(event, LootConfig.getEventHostileDrops(matchingEventName), player);
+        }
+    }
+}
     }
     
     /**
@@ -226,7 +237,7 @@ public class LootEventHandler {
      * @param player The player who killed the entity
      */
     private static void processEntityDrops(LivingDropsEvent event, String entityIdStr, 
-                                     List<LootConfig.EntityDropEntry> dropsList, Player player) {
+        List<LootConfig.EntityDropEntry> dropsList, Player player) {
         for (LootConfig.EntityDropEntry drop : dropsList) {
             // Only process drops for this specific entity type
             if (drop.getEntityId().equals(entityIdStr)) {
