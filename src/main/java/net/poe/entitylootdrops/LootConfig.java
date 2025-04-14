@@ -315,7 +315,8 @@ public static void setDebugLogging(boolean enabled) {
             readme.append("- itemId: The Minecraft item ID (e.g., \"minecraft:diamond\")\n");
             readme.append("- dropChance: Percentage chance to drop (0-100)\n");
             readme.append("- minAmount: Minimum number of items to drop\n");
-            readme.append("- maxAmount: Maximum number of items to drop\n\n");
+            readme.append("- maxAmount: Maximum number of items to drop\n");
+            readme.append("- RequirePlayerKill: Determine if the drop is only for player kills\n\n");
             
             readme.append("Advanced Properties:\n");
             readme.append("- nbtData: Custom NBT data for the item\n");
@@ -337,6 +338,7 @@ public static void setDebugLogging(boolean enabled) {
             readme.append("    \"dropChance\": 5.0,\n");
             readme.append("    \"minAmount\": 1,\n");
             readme.append("    \"maxAmount\": 2\n");
+            readme.append("    \"RequirePlayerKill\": True\n");
             readme.append("}\n");
             readme.append("```\n\n");
             
@@ -538,154 +540,135 @@ public static void setDebugLogging(boolean enabled) {
      * @param eventType The event type (null for normal drops)
      */
     private static void createDefaultDrops(Path directory, String eventType) throws IOException {
-        // First create the mobs directory for entity-specific drops
-        Path mobsDir = directory.resolve(MOBS_DIR);
-        Files.createDirectories(mobsDir);
-        LOGGER.info("Created mobs directory at: {}", mobsDir);
+    // First create the mobs directory for entity-specific drops
+    Path mobsDir = directory.resolve(MOBS_DIR);
+    Files.createDirectories(mobsDir);
+    LOGGER.info("Created mobs directory at: {}", mobsDir);
+
+    // Create a hostile drops file if it doesn't exist
+    Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
+    boolean isNewHostileDropsFile = !Files.exists(hostileDropsPath);
     
-        // Create a hostile drops file if it doesn't exist
-        Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
-        boolean isNewHostileDropsFile = !Files.exists(hostileDropsPath);
+    if (isNewHostileDropsFile) {
+        List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
         
-        if (isNewHostileDropsFile) {
-            List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
-            
-            // Create a comprehensive example drop for all hostile mobs
-            CustomDropEntry exampleDrop = new CustomDropEntry();
-            exampleDrop.setItemId("minecraft:diamond_sword");
-            exampleDrop.setDropChance(25.0f);
-            exampleDrop.setMinAmount(1);
-            exampleDrop.setMaxAmount(3);
-            exampleDrop.setNbtData("{display:{Name:'{\"text\":\"Ultimate Weapon\",\"color\":\"gold\"}',Lore:['{\"text\":\"Legendary drop example\",\"color\":\"purple\"}','{\"text\":\"Shows all features\",\"color\":\"gray\"}']},Enchantments:[{id:\"minecraft:sharpness\",lvl:5},{id:\"minecraft:smite\",lvl:3},{id:\"minecraft:looting\",lvl:3}]}");
-            exampleDrop.setRequiredAdvancement("minecraft:story/enter_the_nether");
-            exampleDrop.setRequiredEffect("minecraft:strength");
-            exampleDrop.setRequiredEquipment("minecraft:diamond_sword");
-            exampleDrop.setRequiredDimension("minecraft:overworld");
-            exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
-            exampleDrop.setCommandChance(100.0f);
-            exampleDrop.setComment("Complete example showing all available options");
-            defaultHostileDrops.add(exampleDrop);
-    
-            // Add event-specific example if this is an event directory
-            if (eventType != null) {
-                CustomDropEntry eventDrop = new CustomDropEntry();
-                // Configure the drop based on the event type
-                switch (eventType) {
-                    case "Winter":
-                        eventDrop.setItemId("minecraft:blue_ice");
-                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Frozen Treasure\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:frost_walker\",lvl:2}]}");
-                        eventDrop.setCommand("particle minecraft:snowflake {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                        break;
-                    case "Summer":
-                        eventDrop.setItemId("minecraft:magma_block");
-                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Summer Heat\",\"color\":\"red\"}'},Enchantments:[{id:\"minecraft:fire_aspect\",lvl:2}]}");
-                        eventDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                        break;
-                    case "Halloween":
-                        eventDrop.setItemId("minecraft:jack_o_lantern");
-                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Spooky Treasure\",\"color\":\"dark_purple\"}'},Enchantments:[{id:\"minecraft:soul_speed\",lvl:3}]}");
-                        eventDrop.setCommand("particle minecraft:soul {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                        break;
-                    case "Easter":
-                        eventDrop.setItemId("minecraft:egg");
-                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Festive Surprise\",\"color\":\"light_purple\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3}]}");
-                        eventDrop.setCommand("particle minecraft:end_rod {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                        break;
-                }
-                if (eventDrop.getItemId() != null) {
-                    eventDrop.setDropChance(50.0f);
-                    eventDrop.setMinAmount(1);
-                    eventDrop.setMaxAmount(3);
-                    eventDrop.setRequiredDimension("minecraft:overworld");
-                    eventDrop.setCommandChance(100.0f);
-                    eventDrop.setComment(eventType + " event example drop");
-                    defaultHostileDrops.add(eventDrop);
-                }
+        // Create a comprehensive example drop for all hostile mobs
+        CustomDropEntry exampleDrop = new CustomDropEntry();
+        exampleDrop.setItemId("minecraft:diamond_sword");
+        exampleDrop.setDropChance(25.0f);
+        exampleDrop.setMinAmount(1);
+        exampleDrop.setMaxAmount(3);
+        exampleDrop.setNbtData("{display:{Name:'{\"text\":\"Ultimate Weapon\",\"color\":\"gold\"}',Lore:['{\"text\":\"Legendary drop example\",\"color\":\"purple\"}','{\"text\":\"Shows all features\",\"color\":\"gray\"}']},Enchantments:[{id:\"minecraft:sharpness\",lvl:5},{id:\"minecraft:smite\",lvl:3},{id:\"minecraft:looting\",lvl:3}]}");
+        exampleDrop.setRequiredAdvancement("minecraft:story/enter_the_nether");
+        exampleDrop.setRequiredEffect("minecraft:strength");
+        exampleDrop.setRequiredEquipment("minecraft:diamond_sword");
+        exampleDrop.setRequiredDimension("minecraft:overworld");
+        exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
+        exampleDrop.setCommandChance(100.0f);
+        exampleDrop.setRequirePlayerKill(true); // Add this line
+        exampleDrop.setComment("Complete example showing all available options");
+        defaultHostileDrops.add(exampleDrop);
+
+        // Add event-specific example if this is an event directory
+        if (eventType != null) {
+            CustomDropEntry eventDrop = new CustomDropEntry();
+            // Configure the drop based on the event type
+            switch (eventType) {
+                case "Winter":
+                    eventDrop.setItemId("minecraft:blue_ice");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Frozen Treasure\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:frost_walker\",lvl:2}]}");
+                    eventDrop.setCommand("particle minecraft:snowflake {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
+                case "Summer":
+                    eventDrop.setItemId("minecraft:magma_block");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Summer Heat\",\"color\":\"red\"}'},Enchantments:[{id:\"minecraft:fire_aspect\",lvl:2}]}");
+                    eventDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
+                case "Halloween":
+                    eventDrop.setItemId("minecraft:jack_o_lantern");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Spooky Treasure\",\"color\":\"dark_purple\"}'},Enchantments:[{id:\"minecraft:soul_speed\",lvl:3}]}");
+                    eventDrop.setCommand("particle minecraft:soul {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
+                case "Easter":
+                    eventDrop.setItemId("minecraft:egg");
+                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Festive Surprise\",\"color\":\"light_purple\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3}]}");
+                    eventDrop.setCommand("particle minecraft:end_rod {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                    break;
             }
-            
-            // Write the drops to the file
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            String json = gson.toJson(defaultHostileDrops);
-            Files.write(hostileDropsPath, json.getBytes());
-            LOGGER.info("Created test hostile drops at: {}", hostileDropsPath);
-            
-            // Only create example mob file if we just created the hostile_drops.json file
-            // This ensures the example is only generated once
-            createExampleMobFile(mobsDir, eventType);
-        }
-    
-        // Log the contents of the directory for debugging
-        LOGGER.info("Directory contents for {}", directory);
-        try {
-            Files.list(directory).forEach(path -> 
-                LOGGER.info("- {}", path.getFileName()));
-            
-            if (Files.exists(mobsDir)) {
-                LOGGER.info("Mobs directory contents:");
-                Files.list(mobsDir).forEach(path -> 
-                    LOGGER.info("- {}", path.getFileName()));
+            if (eventDrop.getItemId() != null) {
+                eventDrop.setDropChance(50.0f);
+                eventDrop.setMinAmount(1);
+                eventDrop.setMaxAmount(3);
+                eventDrop.setRequiredDimension("minecraft:overworld");
+                eventDrop.setCommandChance(100.0f);
+                eventDrop.setRequirePlayerKill(true); // Add this line
+                eventDrop.setComment(eventType + " event example drop");
+                defaultHostileDrops.add(eventDrop);
             }
-        } catch (IOException e) {
-            LOGGER.error("Error listing directory contents", e);
         }
+        
+        // Write the drops to the file
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String json = gson.toJson(defaultHostileDrops);
+        Files.write(hostileDropsPath, json.getBytes());
+        LOGGER.info("Created test hostile drops at: {}", hostileDropsPath);
+        
+        // Only create example mob file if we just created the hostile_drops.json file
+        createExampleMobFile(mobsDir, eventType);
     }
+}
+
+private static void createExampleMobFile(Path mobsDir, String eventType) throws IOException {
+    // Create an example mob file
+    String mobFileName = "zombie_example.json";
+    Path exampleMobPath = mobsDir.resolve(mobFileName);
     
-    /**
-     * Creates an example mob drop file.
-     * This is only called when the hostile_drops.json file is first created.
-     * 
-     * @param mobsDir The mobs directory to create the file in
-     * @param eventType The event type (null for normal drops)
-     */
-    private static void createExampleMobFile(Path mobsDir, String eventType) throws IOException {
-        // Create an example mob file
-        String mobFileName = "zombie_example.json";
-        Path exampleMobPath = mobsDir.resolve(mobFileName);
+    // Only create the file if it doesn't already exist
+    if (!Files.exists(exampleMobPath)) {
+        EntityDropEntry exampleMob = new EntityDropEntry();
+        exampleMob.setEntityId("minecraft:zombie");
+        exampleMob.setItemId("minecraft:emerald");
+        exampleMob.setDropChance(30.0f);
+        exampleMob.setMinAmount(1);
+        exampleMob.setMaxAmount(3);
+        exampleMob.setRequirePlayerKill(true); // Add this line
         
-        // Only create the file if it doesn't already exist
-        if (!Files.exists(exampleMobPath)) {
-            EntityDropEntry exampleMob = new EntityDropEntry();
-            exampleMob.setEntityId("minecraft:zombie");
-            exampleMob.setItemId("minecraft:emerald");
-            exampleMob.setDropChance(30.0f);
-            exampleMob.setMinAmount(1);
-            exampleMob.setMaxAmount(3);
-            
-            // Add event-specific properties if this is for an event
-            if (eventType != null) {
-                exampleMob.setComment("Example " + eventType + " event drop for zombies");
-                // Configure the drop based on the event type
-                switch (eventType) {
-                    case "Winter":
-                        exampleMob.setItemId("minecraft:snowball");
-                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Frozen Zombie Heart\",\"color\":\"aqua\"}'}}");
-                        break;
-                    case "Summer":
-                        exampleMob.setItemId("minecraft:fire_charge");
-                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Zombie Ember\",\"color\":\"red\"}'}}");
-                        break;
-                    case "Halloween":
-                        exampleMob.setItemId("minecraft:bone");
-                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Cursed Zombie Bone\",\"color\":\"dark_purple\"}'}}");
-                        break;
-                    case "Easter":
-                        exampleMob.setItemId("minecraft:rabbit_foot");
-                        exampleMob.setNbtData("{display:{Name:'{\"text\":\"Lucky Zombie Foot\",\"color\":\"light_purple\"}'}}");
-                        break;
-                    default:
-                        exampleMob.setComment("Example zombie drop configuration");
-                }
-            } else {
-                exampleMob.setComment("Example zombie drop configuration");
+        // Add event-specific properties if this is for an event
+        if (eventType != null) {
+            exampleMob.setComment("Example " + eventType + " event drop for zombies");
+            // Configure the drop based on the event type
+            switch (eventType) {
+                case "Winter":
+                    exampleMob.setItemId("minecraft:snowball");
+                    exampleMob.setNbtData("{display:{Name:'{\"text\":\"Frozen Zombie Heart\",\"color\":\"aqua\"}'}}");
+                    break;
+                case "Summer":
+                    exampleMob.setItemId("minecraft:fire_charge");
+                    exampleMob.setNbtData("{display:{Name:'{\"text\":\"Zombie Ember\",\"color\":\"red\"}'}}");
+                    break;
+                case "Halloween":
+                    exampleMob.setItemId("minecraft:bone");
+                    exampleMob.setNbtData("{display:{Name:'{\"text\":\"Cursed Zombie Bone\",\"color\":\"dark_purple\"}'}}");
+                    break;
+                case "Easter":
+                    exampleMob.setItemId("minecraft:rabbit_foot");
+                    exampleMob.setNbtData("{display:{Name:'{\"text\":\"Lucky Zombie Foot\",\"color\":\"light_purple\"}'}}");
+                    break;
+                default:
+                    exampleMob.setComment("Example zombie drop configuration");
             }
-            
-            // Write the example to the file
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            String json = gson.toJson(exampleMob);
-            Files.write(exampleMobPath, json.getBytes());
-            LOGGER.info("Created example mob file at: {}", exampleMobPath);
+        } else {
+            exampleMob.setComment("Example zombie drop configuration");
         }
-    } // End of createExampleMobFile method
+        
+        // Write the example to the file
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String json = gson.toJson(exampleMob);
+        Files.write(exampleMobPath, json.getBytes());
+        LOGGER.info("Created example mob file at: {}", exampleMobPath);
+    }
+}
+
 
     /**
      * Broadcasts a message to all players on the server.
@@ -1463,6 +1446,28 @@ public static class CustomDropEntry {
         this.commandChance = commandChance;
     }
     
+    // Add these to the CustomDropEntry class in LootConfig.java
+private boolean requirePlayerKill = true; // Default to true for backward compatibility
+
+/**
+ * Checks if the drop requires a player kill.
+ * 
+ * @return True if the drop requires a player kill
+ */
+public boolean isRequirePlayerKill() {
+    return requirePlayerKill;
+}
+
+/**
+ * Sets whether the drop requires a player kill.
+ * 
+ * @param requirePlayerKill True if the drop requires a player kill
+ */
+public void setRequirePlayerKill(boolean requirePlayerKill) {
+    this.requirePlayerKill = requirePlayerKill;
+}
+
+
     /**
      * Sets the comment for documentation in the JSON file.
      * 

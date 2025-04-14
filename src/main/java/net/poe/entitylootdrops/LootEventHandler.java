@@ -82,36 +82,46 @@ public class LootEventHandler {
      * @param event The LivingDropsEvent containing information about the entity and its drops
      */
     @SubscribeEvent
-    public static void onEntityDrop(LivingDropsEvent event) {
-        LivingEntity entity = event.getEntity();
-        
-        // Only process drops if a player killed the entity
-        if (!(event.getSource().getEntity() instanceof Player)) {
-            return;
+public static void onEntityDrop(LivingDropsEvent event) {
+    LivingEntity entity = event.getEntity();
+    
+    // Check if a player killed the entity (directly or indirectly)
+    boolean playerKilled = false;
+    Player player = null;
+
+    // Check for direct player kill
+    if (event.getSource().getEntity() instanceof Player) {
+        playerKilled = true;
+        player = (Player) event.getSource().getEntity();
+    } 
+    // Check for indirect player kill (fire, etc.)
+    else if (event.getSource().getEntity() == null) {
+        // Get the last damage source if it exists
+        if (entity.getLastHurtByMob() instanceof Player) {
+            playerKilled = true;
+            player = (Player) entity.getLastHurtByMob();
+            logDebug("Indirect player kill detected from: {}", player.getName().getString());
         }
-        
-        // If drop chance event is active, potentially duplicate vanilla drops to simulate increased chance
+    }
+
+    // Handle vanilla drop modifications only if player killed the entity
+    if (playerKilled && player != null) {
+        // If drop chance event is active, potentially duplicate vanilla drops
         if (LootConfig.isDropChanceEventActive()) {
             List<ItemEntity> additionalDrops = new ArrayList<>();
             
-            // For each vanilla drop, there's a 50% chance to add another one (simulating 2x drop chance)
             event.getDrops().forEach(itemEntity -> {
-                // 50% chance to add another copy of this drop
                 if (RANDOM.nextFloat() < 0.5f) {
                     ItemStack originalStack = itemEntity.getItem();
-                    
-                    // Create a new stack with the same amount
                     ItemStack duplicateStack = new ItemStack(
                         originalStack.getItem(),
                         originalStack.getCount()
                     );
                     
-                    // Copy NBT data if present
                     if (originalStack.hasTag()) {
                         duplicateStack.setTag(originalStack.getTag().copy());
                     }
                     
-                    // Create a new item entity with the duplicate stack
                     ItemEntity duplicateEntity = new ItemEntity(
                         itemEntity.level(),
                         itemEntity.getX(),
@@ -120,12 +130,8 @@ public class LootEventHandler {
                         duplicateStack
                     );
                     
-                    // Copy motion from original
                     duplicateEntity.setDeltaMovement(itemEntity.getDeltaMovement());
-                    
-                    // Set pickup delay using the correct method
                     duplicateEntity.setDefaultPickUpDelay();
-                    
                     additionalDrops.add(duplicateEntity);
                     
                     logDebug("Added extra vanilla drop for {} due to drop chance event", 
@@ -133,7 +139,6 @@ public class LootEventHandler {
                 }
             });
             
-            // Add the additional drops to the event
             event.getDrops().addAll(additionalDrops);
         }
         
@@ -141,22 +146,17 @@ public class LootEventHandler {
         if (LootConfig.isDoubleDropsActive()) {
             List<ItemEntity> doubledDrops = new ArrayList<>();
             
-            // Process each vanilla drop and double its amount
             event.getDrops().forEach(itemEntity -> {
                 ItemStack originalStack = itemEntity.getItem();
-                
-                // Create a new stack with double the amount
                 ItemStack doubledStack = new ItemStack(
                     originalStack.getItem(),
                     originalStack.getCount() * 2
                 );
                 
-                // Copy NBT data if present
                 if (originalStack.hasTag()) {
                     doubledStack.setTag(originalStack.getTag().copy());
                 }
                 
-                // Create a new item entity with the doubled stack
                 ItemEntity doubledEntity = new ItemEntity(
                     itemEntity.level(),
                     itemEntity.getX(),
@@ -165,12 +165,8 @@ public class LootEventHandler {
                     doubledStack
                 );
                 
-                // Copy motion from original
                 doubledEntity.setDeltaMovement(itemEntity.getDeltaMovement());
-                
-                // Set pickup delay using the correct method
                 doubledEntity.setDefaultPickUpDelay();
-                
                 doubledDrops.add(doubledEntity);
                 
                 logDebug("Doubled vanilla drop amount for {} to {}", 
@@ -178,106 +174,121 @@ public class LootEventHandler {
                     doubledStack.getCount());
             });
             
-            // Replace original drops with doubled drops
             event.getDrops().clear();
             event.getDrops().addAll(doubledDrops);
         }
-        
-        Player player = (Player) event.getSource().getEntity();
-        
-        // Get the entity ID as a string (e.g., "minecraft:zombie")
-        ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
-        if (entityId == null) return;
-        
-        String entityIdStr = entityId.toString();
-        // Check if the entity is hostile (implements the Enemy interface)
-        boolean isHostile = entity instanceof Enemy;
-        
-        // Process normal (always active) entity-specific drops
-        processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player);
-        
-        // Process normal (always active) hostile mob drops if this is a hostile entity
-        if (isHostile) {
-            processDrops(event, LootConfig.getNormalHostileDrops(), player);
+    }
+    
+    // Get the entity ID as a string (e.g., "minecraft:zombie")
+    ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+    if (entityId == null) return;
+    
+    String entityIdStr = entityId.toString();
+    boolean isHostile = entity instanceof Enemy;
+
+    // Log kill information if debug is enabled
+    if (debugLoggingEnabled) {
+        logDebug("Entity death: {} ({})", entityIdStr, 
+            playerKilled ? "Player kill by " + player.getName().getString() : "Non-player kill");
+        logDebug("Death source: {}", event.getSource().getMsgId());
+        if (event.getSource().getEntity() != null) {
+            logDebug("Direct killer: {}", event.getSource().getEntity().getName().getString());
         }
-        
-    // Process event-specific drops for all active events
-for (String eventName : LootConfig.getActiveEvents()) {
-    // Find the matching event name in the event drops map (case-insensitive)
-    String matchingEventName = null;
-    for (String key : LootConfig.getEventDrops().keySet()) {
-        if (key.equalsIgnoreCase(eventName)) {
-            matchingEventName = key;
-            break;
+        if (entity.getLastHurtByMob() != null) {
+            logDebug("Last attacker: {}", entity.getLastHurtByMob().getName().getString());
         }
     }
     
-    // Process entity-specific drops for this event
-    if (matchingEventName != null) {
-        List<LootConfig.EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(matchingEventName);
-        if (eventDropList != null) {
-            processEntityDrops(event, entityIdStr, eventDropList, player);
+    // Process normal (always active) entity-specific drops
+    processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player, playerKilled);
+    
+    // Process normal (always active) hostile mob drops if this is a hostile entity
+    if (isHostile) {
+        processDrops(event, LootConfig.getNormalHostileDrops(), player, playerKilled);
+    }
+    
+    // Process event-specific drops for all active events
+    for (String eventName : LootConfig.getActiveEvents()) {
+        String matchingEventName = null;
+        for (String key : LootConfig.getEventDrops().keySet()) {
+            if (key.equalsIgnoreCase(eventName)) {
+                matchingEventName = key;
+                break;
+            }
         }
         
-        // Process hostile mob drops for this event if this is a hostile entity
-        if (isHostile) {
-            processDrops(event, LootConfig.getEventHostileDrops(matchingEventName), player);
+        if (matchingEventName != null) {
+            List<LootConfig.EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(matchingEventName);
+            if (eventDropList != null) {
+                processEntityDrops(event, entityIdStr, eventDropList, player, playerKilled);
+            }
+            
+            if (isHostile) {
+                processDrops(event, LootConfig.getEventHostileDrops(matchingEventName), player, playerKilled);
+            }
         }
+    }
+
+    // Log final drop information if debug is enabled
+    if (debugLoggingEnabled && !event.getDrops().isEmpty()) {
+        logDebug("Final drops for {}: ", entityIdStr);
+        event.getDrops().forEach(drop -> 
+            logDebug("- {} x{}", 
+                ForgeRegistries.ITEMS.getKey(drop.getItem().getItem()), 
+                drop.getItem().getCount())
+        );
     }
 }
 
-    }
     
     /**
      * Processes entity-specific drops for a given entity.
-     * Only processes drops that match the entity ID.
-     * 
-     * @param event The LivingDropsEvent
-     * @param entityIdStr The entity ID as a string
-     * @param dropsList The list of entity drop entries to process
-     * @param player The player who killed the entity
      */
     private static void processEntityDrops(LivingDropsEvent event, String entityIdStr, 
-        List<LootConfig.EntityDropEntry> dropsList, Player player) {
+        List<LootConfig.EntityDropEntry> dropsList, Player player, boolean playerKilled) {
         for (LootConfig.EntityDropEntry drop : dropsList) {
-            // Only process drops for this specific entity type
             if (drop.getEntityId().equals(entityIdStr)) {
-                processDropEntry(event, drop, player);
+                processDropEntry(event, drop, player, playerKilled);
             }
         }
     }
     
     /**
      * Processes a list of custom drops.
-     * Used for hostile mob drops that apply to all hostile entities.
-     * 
-     * @param event The LivingDropsEvent
-     * @param drops The list of custom drop entries to process
-     * @param player The player who killed the entity
      */
-    private static void processDrops(LivingDropsEvent event, List<LootConfig.CustomDropEntry> drops, Player player) {
+    private static void processDrops(LivingDropsEvent event, List<LootConfig.CustomDropEntry> drops, 
+        Player player, boolean playerKilled) {
         for (LootConfig.CustomDropEntry drop : drops) {
-            processDropEntry(event, drop, player);
+            processDropEntry(event, drop, player, playerKilled);
         }
     }
     
     /**
      * Processes a single drop entry.
-     * Checks all requirements, calculates drop chance, and spawns the item if successful.
-     * Also handles command execution if specified.
-     * 
-     * @param event The LivingDropsEvent
-     * @param drop The drop entry to process
-     * @param player The player who killed the entity
      */
-    private static void processDropEntry(LivingDropsEvent event, LootConfig.CustomDropEntry drop, Player player) {
+    private static void processDropEntry(LivingDropsEvent event, LootConfig.CustomDropEntry drop, 
+        Player player, boolean playerKilled) {
         try {
+            // Check if this drop requires a player kill
+            if (drop.isRequirePlayerKill() && !playerKilled) {
+                logDebug("Skipping drop {} - requires player kill but entity was not killed by a player", 
+                    drop.getItemId());
+                return;
+            }
+            
+            // Skip if player is null but we need to check player-specific requirements
+            if (player == null && (drop.hasRequiredDimension() || drop.hasRequiredAdvancement() || 
+                drop.hasRequiredEffect() || drop.hasRequiredEquipment())) {
+                logDebug("Skipping drop {} - player-specific requirements but no player killed the entity", 
+                    drop.getItemId());
+                return;
+            }
+
             // Check dimension requirement
-            if (drop.hasRequiredDimension()) {
+            if (drop.hasRequiredDimension() && player != null) {
                 ResourceLocation playerDimension = player.level().dimension().location();
                 String requiredDimension = drop.getRequiredDimension();
                 
-                // Skip if player is not in the required dimension
                 if (!playerDimension.toString().equals(requiredDimension)) {
                     logDebug("Skipping drop {} - wrong dimension (player in {}, required {})", 
                         drop.getItemId(), playerDimension, requiredDimension);
@@ -299,7 +310,7 @@ for (String eventName : LootConfig.getActiveEvents()) {
             }
             
             // Check potion effect requirement
-            if (drop.hasRequiredEffect()) {
+            if (drop.hasRequiredEffect() && player != null) {
                 if (!hasEffect(player, drop.getRequiredEffect())) {
                     logDebug("Skipping drop {} - missing effect {}", 
                         drop.getItemId(), drop.getRequiredEffect());
@@ -309,7 +320,7 @@ for (String eventName : LootConfig.getActiveEvents()) {
             }
             
             // Check equipment requirement
-            if (drop.hasRequiredEquipment()) {
+            if (drop.hasRequiredEquipment() && player != null) {
                 if (!hasEquipment(player, drop.getRequiredEquipment())) {
                     logDebug("Skipping drop {} - missing equipment {}", 
                         drop.getItemId(), drop.getRequiredEquipment());
@@ -318,24 +329,22 @@ for (String eventName : LootConfig.getActiveEvents()) {
                 logDebug("Equipment requirement met for {}: {}", drop.getItemId(), drop.getRequiredEquipment());
             }
             
-            // Calculate drop chance, applying double chance if the event is active
+            // Calculate drop chance
             float chance = drop.getDropChance();
-            if (LootConfig.isDropChanceEventActive()) {
+            if (LootConfig.isDropChanceEventActive() && playerKilled) {
                 chance *= 2.0f;
                 logDebug("Drop chance doubled for {}: {}% -> {}%", 
                     drop.getItemId(), drop.getDropChance(), chance);
             }
             
-            // Execute command if specified and chance check passes
+            // Handle command execution
             if (drop.hasCommand() && player instanceof ServerPlayer) {
                 float cmdChance = drop.getCommandChance();
-        
-                // Skip command execution if chance is explicitly set to 0
+                
                 if (cmdChance <= 0) {
                     logDebug("Skipping command execution for {} - command chance is {}%", 
                         drop.getItemId(), cmdChance);
                 } else {
-                    // Roll for command chance (default is 100% if not specified)
                     boolean executeCmd = RANDOM.nextFloat() * 100 <= cmdChance;
                     logDebug("Command chance roll for {}: {}% - Result: {}", 
                         drop.getItemId(), cmdChance, executeCmd ? "EXECUTE" : "SKIP");
@@ -352,22 +361,18 @@ for (String eventName : LootConfig.getActiveEvents()) {
                 Item item = ForgeRegistries.ITEMS.getValue(itemId);
                 
                 if (item != null) {
-                    // Calculate drop amount
                     int amount = drop.getMinAmount();
                     if (drop.getMaxAmount() > drop.getMinAmount()) {
                         amount += RANDOM.nextInt(drop.getMaxAmount() - drop.getMinAmount() + 1);
                     }
                     
-                    // Double the amount if double drops is active
-                    if (LootConfig.isDoubleDropsActive()) {
+                    if (LootConfig.isDoubleDropsActive() && playerKilled) {
                         amount *= 2;
                         logDebug("Doubled drop amount for {} to {}", drop.getItemId(), amount);
                     }
                     
-                    // Create the item stack
                     ItemStack stack = new ItemStack(item, amount);
                     
-                    // Apply NBT data if specified
                     if (drop.hasNbtData()) {
                         try {
                             CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
@@ -378,11 +383,9 @@ for (String eventName : LootConfig.getActiveEvents()) {
                         }
                     }
                     
-                    // Spawn the item in the world
                     event.getEntity().spawnAtLocation(stack);
                     
-                    // Log the drop
-                    if (LootConfig.isDropChanceEventActive()) {
+                    if (LootConfig.isDropChanceEventActive() && playerKilled) {
                         logDebug("Dropped {} x{} (doubled chance: {}%)", 
                             drop.getItemId(), amount, chance);
                     } else {
@@ -399,32 +402,16 @@ for (String eventName : LootConfig.getActiveEvents()) {
         }
     }
     
-    /**
-     * Checks if a player has completed an advancement.
-     * 
-     * @param player The player to check
-     * @param advancement The advancement ID
-     * @return True if the player has completed the advancement
-     */
     private static boolean hasAdvancement(ServerPlayer player, ResourceLocation advancement) {
         MinecraftServer server = player.getServer();
         if (server == null) return false;
         
-        // Get the advancement from the server
         Advancement adv = server.getAdvancements().getAdvancement(advancement);
         if (adv == null) return false;
         
-        // Check if the player has completed it
         return player.getAdvancements().getOrStartProgress(adv).isDone();
     }
     
-    /**
-     * Checks if a player has an active potion effect.
-     * 
-     * @param player The player to check
-     * @param effectId The effect ID
-     * @return True if the player has the effect
-     */
     private static boolean hasEffect(Player player, String effectId) {
         ResourceLocation effectResource = new ResourceLocation(effectId);
         MobEffect effect = ForgeRegistries.MOB_EFFECTS.getValue(effectResource);
@@ -433,14 +420,6 @@ for (String eventName : LootConfig.getActiveEvents()) {
         return player.hasEffect(effect);
     }
     
-    /**
-     * Checks if a player has a specific item equipped.
-     * Checks both main hand and offhand.
-     * 
-     * @param player The player to check
-     * @param itemId The item ID
-     * @return True if the player has the item equipped
-     */
     private static boolean hasEquipment(Player player, String itemId) {
         ResourceLocation itemResource = new ResourceLocation(itemId);
         ItemStack mainHand = player.getMainHandItem();
@@ -450,14 +429,6 @@ for (String eventName : LootConfig.getActiveEvents()) {
                 ForgeRegistries.ITEMS.getKey(offHand.getItem()).equals(itemResource));
     }
     
-    /**
-     * Executes a command when a drop occurs.
-     * Replaces placeholders in the command with actual values.
-     * 
-     * @param command The command to execute
-     * @param player The player who killed the entity
-     * @param killedEntity The entity that was killed
-     */
     private static void executeCommand(String command, ServerPlayer player, LivingEntity killedEntity) {
         try {
             MinecraftServer server = player.getServer();
@@ -467,9 +438,6 @@ for (String eventName : LootConfig.getActiveEvents()) {
             }
             
             ServerLevel level = (ServerLevel) player.level();
-            
-            // Split the command by newlines to handle multiple commands
-            // Handle both \n and \\n formats
             String[] commands = command.replace("\\n", "\n").split("\n");
             
             for (String singleCommand : commands) {
@@ -477,7 +445,6 @@ for (String eventName : LootConfig.getActiveEvents()) {
                     continue;
                 }
                 
-                // Replace placeholders in the command with actual values
                 String processedCommand = singleCommand
                     .replace("{player}", player.getName().getString())
                     .replace("{player_x}", String.format("%.2f", player.getX()))
@@ -489,15 +456,13 @@ for (String eventName : LootConfig.getActiveEvents()) {
                     .replace("{entity_y}", String.format("%.2f", killedEntity.getY()))
                     .replace("{entity_z}", String.format("%.2f", killedEntity.getZ()));
                 
-                // Create a command source with the player's position and permissions
                 CommandSourceStack source = server.createCommandSourceStack()
                     .withPosition(Vec3.atCenterOf(killedEntity.blockPosition()))
                     .withRotation(Vec2.ZERO)
                     .withLevel(level)
-                    .withPermission(4)  // Op level 4 (highest) to ensure command can execute
+                    .withPermission(4)
                     .withEntity(player);
                 
-                // Execute the command
                 try {
                     logDebug("Attempting to execute command: {}", processedCommand);
                     server.getCommands().performPrefixedCommand(source, processedCommand);

@@ -4,8 +4,9 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="entitylootdrops"
-version="1.0"
+version="1.3"
 displayName="Entity Loot Drops"
+logoFile="assets/entitylootdrops/textures/gui/logo.png"
 description='''
 A mod that allows adding custom loot drops to entities with configurable drop rates.
 '''
