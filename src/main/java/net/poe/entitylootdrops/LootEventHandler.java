@@ -114,61 +114,127 @@ public static void onEntityDrop(LivingDropsEvent event) {
     String entityIdStr = entityId.toString();
     boolean isHostile = entity instanceof Enemy;
 
-    // Check if we should disable all default drops (vanilla and modded)
-    boolean disableDefaultDrops = false;
-    Set<String> allowedModIDs = new HashSet<>();
-    Set<String> allowedItemIDs = new HashSet<>();
+    // Check if we should disable vanilla drops for hostile mobs
+boolean cancelVanillaDrops = false;
+List<String> allowedModIDs = new ArrayList<>();
+
+if (isHostile) {
+    // Get the normal hostile drops configuration
+    List<LootConfig.CustomDropEntry> hostileDrops = LootConfig.getNormalHostileDrops();
     
-    if (isHostile) {
-        // Get the normal hostile drops configuration
-        List<LootConfig.CustomDropEntry> hostileDrops = LootConfig.getNormalHostileDrops();
-        
-        // Check if any entry has allowDefaultDrops set to false
-        for (LootConfig.CustomDropEntry drop : hostileDrops) {
-            if (!drop.isAllowDefaultDrops()) {
-                disableDefaultDrops = true;
-                // Add the drop's itemId to allowed items
-                if (drop.getItemId() != null) {
-                    allowedItemIDs.add(drop.getItemId());
-                }
-                // Add allowed mod IDs
-                if (drop.getAllowModIDs() != null) {
-                    allowedModIDs.addAll(drop.getAllowModIDs());
-                }
-            }
-        }
-        
-        // Also check event-specific hostile drops if any events are active
-        for (String eventName : LootConfig.getActiveEvents()) {
-            String matchingEventName = null;
-            for (String key : LootConfig.getEventDrops().keySet()) {
-                if (key.equalsIgnoreCase(eventName)) {
-                    matchingEventName = key;
-                    break;
+    // Check if any entry has allowDefaultDrops set to false
+    for (LootConfig.CustomDropEntry drop : hostileDrops) {
+        if (!drop.isAllowDefaultDrops()) {
+            // Check dimension requirement if specified
+            if (drop.hasRequiredDimension() && player != null) {
+                ResourceLocation playerDimension = player.level().dimension().location();
+                String requiredDimension = drop.getRequiredDimension();
+                
+                if (!playerDimension.toString().equals(requiredDimension)) {
+                    // Skip this entry if dimension doesn't match
+                    logDebug("Skipping allowDefaultDrops=false - wrong dimension (player in {}, required {})", 
+                        playerDimension, requiredDimension);
+                    continue;
                 }
             }
             
-            if (matchingEventName != null) {
-                List<LootConfig.CustomDropEntry> eventHostileDrops = LootConfig.getEventHostileDrops(matchingEventName);
-                for (LootConfig.CustomDropEntry drop : eventHostileDrops) {
-                    if (!drop.isAllowDefaultDrops()) {
-                        disableDefaultDrops = true;
-                        // Add the drop's itemId to allowed items
-                        if (drop.getItemId() != null) {
-                            allowedItemIDs.add(drop.getItemId());
-                        }
-                        // Add allowed mod IDs
-                        if (drop.getAllowModIDs() != null) {
-                            allowedModIDs.addAll(drop.getAllowModIDs());
+            cancelVanillaDrops = true;
+            if (drop.getAllowModIDs() != null) {
+                allowedModIDs.addAll(drop.getAllowModIDs());
+            }
+            break;
+        }
+    }
+    
+    // Also check event-specific hostile drops if any events are active
+    for (String eventName : LootConfig.getActiveEvents()) {
+        String matchingEventName = null;
+        for (String key : LootConfig.getEventDrops().keySet()) {
+            if (key.equalsIgnoreCase(eventName)) {
+                matchingEventName = key;
+                break;
+            }
+        }
+        
+        if (matchingEventName != null) {
+            List<LootConfig.CustomDropEntry> eventHostileDrops = LootConfig.getEventHostileDrops(matchingEventName);
+            for (LootConfig.CustomDropEntry drop : eventHostileDrops) {
+                if (!drop.isAllowDefaultDrops()) {
+                    // Check dimension requirement if specified
+                    if (drop.hasRequiredDimension() && player != null) {
+                        ResourceLocation playerDimension = player.level().dimension().location();
+                        String requiredDimension = drop.getRequiredDimension();
+                        
+                        if (!playerDimension.toString().equals(requiredDimension)) {
+                            // Skip this entry if dimension doesn't match
+                            logDebug("Skipping allowDefaultDrops=false - wrong dimension (player in {}, required {})", 
+                                playerDimension, requiredDimension);
+                            continue;
                         }
                     }
+                    
+                    cancelVanillaDrops = true;
+                    if (drop.getAllowModIDs() != null) {
+                        allowedModIDs.addAll(drop.getAllowModIDs());
+                    }
+                    break;
                 }
             }
         }
     }
+}
     
-    // Handle vanilla drop modifications if player killed the entity
-    if (playerKilled && player != null) {
+// Filter vanilla drops if needed
+if (cancelVanillaDrops) {
+    List<ItemEntity> filteredDrops = new ArrayList<>();
+    
+    // First, collect all itemIds from drop entries
+    Set<String> configuredItemIds = new HashSet<>();
+    for (LootConfig.CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
+        if (drop.getItemId() != null) {
+            configuredItemIds.add(drop.getItemId());
+        }
+    }
+    
+    // Also check event drops
+    for (String eventName : LootConfig.getActiveEvents()) {
+        List<LootConfig.CustomDropEntry> eventDrops = LootConfig.getEventHostileDrops(eventName);
+        for (LootConfig.CustomDropEntry drop : eventDrops) {
+            if (drop.getItemId() != null) {
+                configuredItemIds.add(drop.getItemId());
+            }
+        }
+    }
+    
+    for (ItemEntity itemEntity : event.getDrops()) {
+        ItemStack stack = itemEntity.getItem();
+        ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(stack.getItem());
+        
+        if (itemId != null) {
+            String modId = itemId.getNamespace();
+            String itemIdStr = itemId.toString();
+            
+            // Keep the drop if:
+            // 1. It's from an allowed mod OR
+            // 2. It matches any itemId in the drop entries
+            boolean keepDrop = allowedModIDs.contains(modId) || configuredItemIds.contains(itemIdStr);
+            
+            if (keepDrop) {
+                filteredDrops.add(itemEntity);
+                logDebug("Keeping drop {} (allowed mod or specified in drop entries)", itemId);
+            } else {
+                logDebug("Removing drop {} (not from allowed mod and not specified in drop entries)", itemId);
+            }
+        }
+    }
+    
+    // Replace the drops with our filtered list
+    event.getDrops().clear();
+    event.getDrops().addAll(filteredDrops);
+}
+
+    // Handle vanilla drop modifications only if player killed the entity and vanilla drops aren't cancelled
+    if (playerKilled && player != null && !cancelVanillaDrops) {
         // If drop chance event is active, potentially duplicate vanilla drops
         if (LootConfig.isDropChanceEventActive()) {
             List<ItemEntity> additionalDrops = new ArrayList<>();
@@ -241,33 +307,6 @@ public static void onEntityDrop(LivingDropsEvent event) {
             event.getDrops().addAll(doubledDrops);
         }
     }
-    
-    // Filter drops if needed (after applying drop modifications)
-    if (disableDefaultDrops) {
-        List<ItemEntity> filteredDrops = new ArrayList<>();
-        
-        for (ItemEntity itemEntity : event.getDrops()) {
-            ItemStack stack = itemEntity.getItem();
-            ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(stack.getItem());
-            
-            if (itemId != null) {
-                String itemIdStr = itemId.toString();
-                String modId = itemId.getNamespace();
-                
-                // Keep the drop if it's specifically allowed by itemId or from an allowed mod
-                if (allowedItemIDs.contains(itemIdStr) || allowedModIDs.contains(modId)) {
-                    filteredDrops.add(itemEntity);
-                    logDebug("Keeping drop {} (allowed by configuration)", itemId);
-                } else {
-                    logDebug("Removing drop {} (not in allowed list)", itemId);
-                }
-            }
-        }
-        
-        // Replace the drops with our filtered list
-        event.getDrops().clear();
-        event.getDrops().addAll(filteredDrops);
-    }
 
     // Log kill information if debug is enabled
     if (debugLoggingEnabled) {
@@ -322,6 +361,7 @@ public static void onEntityDrop(LivingDropsEvent event) {
         );
     }
 }
+
 
     
     /**

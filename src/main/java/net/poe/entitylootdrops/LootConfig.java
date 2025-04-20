@@ -270,383 +270,333 @@ public static void setDebugLogging(boolean enabled) {
     }
     
     /**
-     * Creates a README.txt file with documentation.
-     * This file explains how to configure the mod.
-     */
-    private static void createReadmeFile(Path configDir) throws IOException {
-        Path readmePath = configDir.resolve("README.txt");
-        if (!Files.exists(readmePath)) {
-            StringBuilder readme = new StringBuilder();
-            readme.append("Entity Loot Drops - Configuration Guide\n");
-            readme.append("=====================================\n\n");
-            
-            readme.append("This mod allows you to customize what items drop from mobs, with powerful features like conditional drops, commands, and special effects.\n\n");
-            
-            readme.append("Quick Start:\n");
-            readme.append("-----------\n");
-            readme.append("1. All configuration is done through JSON files\n");
-            readme.append("2. Files are organized in folders for normal drops and event drops\n");
-            readme.append("3. Use /lootdrops commands to control events in-game\n\n");
-
-            readme.append("1. Directory Structure\n");
-            readme.append("----------------------\n");
-            readme.append("config/entitylootdrops/\n");
-            readme.append("|-- Normal/                  # Regular drops (always active)\n");
-            readme.append("|   |-- Global_Hostile_Drops.json   # Drops for all hostile mobs\n");
-            readme.append("|   `-- Mobs/                # Entity-specific drops\n");
-            readme.append("|       |-- zombie_drops.json\n");
-            readme.append("|       |-- skeleton_drops.json\n");
-            readme.append("|       `-- ...\n");
-            readme.append("|-- Event Drops/                  # Event-specific drops\n");
-            readme.append("    |-- Winter/              # Winter event drops\n");
-            readme.append("    |   |-- hostile_drops.json\n");
-            readme.append("    |   `-- Mobs/\n");
-            readme.append("    |       |-- skeleton_ice.json\n");
-            readme.append("    |       `-- ...\n");
-            readme.append("    |-- Summer/              # Summer event drops\n");
-            readme.append("    |-- Easter/              # Easter event drops\n");
-            readme.append("    |-- Halloween/           # Halloween event drops\n");
-            readme.append("    `-- [custom event]/      # Custom event drops (create your own folder)\n\n");
-
-            readme.append("2. Drop Configuration Format\n");
-            readme.append("-------------------------\n");
-            readme.append("All drop configurations use JSON format. Here's a detailed breakdown:\n\n");
-            
-            readme.append("Basic Properties:\n");
-            readme.append("- \"_comment\": \"Comment for this drop configuration (e.g., \"zombie drops diamonds\")\n");
-            readme.append("- itemId: The Minecraft item ID (e.g., \"minecraft:diamond\")\n");
-            readme.append("- dropChance: Percentage chance to drop (0-100)\n");
-            readme.append("- minAmount: Minimum number of items to drop\n");
-            readme.append("- maxAmount: Maximum number of items to drop\n");
-            readme.append("- RequirePlayerKill: Determine if the drop is only for player kills\n");
-            readme.append("- allowDefaultDrops: Set to false to disable vanilla drops (default: true)\n");
-            readme.append("- allowModIDs: List of mod IDs that can still drop items when allowDefaultDrops is false\n\n");
-            
-            readme.append("Advanced Properties:\n");
-            readme.append("- nbtData: Custom NBT data for the item\n");
-            readme.append("- command: Command to execute when the mob dies\n");
-            readme.append("- commandChance: Chance for the command to execute (0-100)\n");
-            readme.append("- requiredAdvancement: Player must have this advancement\n");
-            readme.append("- requiredEffect: Player must have this potion effect\n");
-            readme.append("- requiredEquipment: Player must have this item equipped\n");
-            readme.append("- requiredDimension: Player must be in this dimension (e.g., \"minecraft:overworld\")\n\n");
-            
-            readme.append("3. Example Configurations\n");
-            readme.append("----------------------\n\n");
-            
-            readme.append("A. Basic Hostile Drop:\n");
-            readme.append("```json\n");
-            readme.append("{\n");
-            readme.append("    \"_comment\": \"Simple diamond drop with 5% chance\",\n");
-            readme.append("    \"itemId\": \"minecraft:diamond\",\n");
-            readme.append("    \"dropChance\": 5.0,\n");
-            readme.append("    \"minAmount\": 1,\n");
-            readme.append("    \"maxAmount\": 2\n");
-            readme.append("    \"RequirePlayerKill\": True\n");
-            readme.append("}\n");
-            readme.append("```\n\n");
-            
-            readme.append("B. Advanced Item Drop with NBT:\n");
-            readme.append("```json\n");
-            readme.append("{\n");
-            readme.append("    \"_comment\": \"Named sword with enchantments\",\n");
-            readme.append("    \"itemId\": \"minecraft:diamond_sword\",\n");
-            readme.append("    \"dropChance\": 10.0,\n");
-            readme.append("    \"minAmount\": 1,\n");
-            readme.append("    \"maxAmount\": 1,\n");
-            readme.append("    \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Legendary Blade\\\",\\\"color\\\":\\\"gold\\\"}',Lore:['{\\\"text\\\":\\\"Ancient power flows through this weapon\\\",\\\"color\\\":\\\"purple\\\"}']},Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5},{id:\\\"minecraft:looting\\\",lvl:3}]}\"\n");
-            readme.append("}\n");
-            readme.append("```\n\n");
-            
-            readme.append("C. Conditional Drop with Command:\n");
-            readme.append("```json\n");
-            readme.append("{\n");
-            readme.append("    \"_comment\": \"Special drop for advanced players\",\n");
-            readme.append("    \"itemId\": \"minecraft:netherite_ingot\",\n");
-            readme.append("    \"dropChance\": 15.0,\n");
-            readme.append("    \"minAmount\": 1,\n");
-            readme.append("    \"maxAmount\": 1,\n");
-            readme.append("    \"requiredAdvancement\": \"minecraft:story/enter_the_nether\",\n");
-            readme.append("    \"requiredEquipment\": \"minecraft:diamond_sword\",\n");
-            readme.append("    \"command\": \"title {player} title {\\\"text\\\":\\\"Legendary Find!\\\",\\\"color\\\":\\\"gold\\\"}\",\n");
-            readme.append("    \"commandChance\": 100.0\n");
-            readme.append("}\n");
-            readme.append("```\n\n");
-            
-            readme.append("Complete example showing all available options:\n");
-            readme.append("```json\n");
-            readme.append("{\n");
-            readme.append("  \"_comment\": \"Complete example showing all available options\",\n");
-            readme.append("  \"entityId\": \"minecraft:zombie\",\n");
-            readme.append("  \"itemId\": \"minecraft:diamond_sword\",\n");
-            readme.append("  \"dropChance\": 10.0,\n");
-            readme.append("  \"minAmount\": 1,\n");
-            readme.append("  \"maxAmount\": 3,\n");
-            readme.append("  \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Ultimate Sword\\\",\\\"color\\\":\\\"gold\\\"}',Lore:['{\\\"text\\\":\\\"A powerful weapon\\\",\\\"color\\\":\\\"purple\\\"}']},Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5},{id:\\\"minecraft:looting\\\",lvl:3}]}\",\n");
-            readme.append("  \"requiredAdvancement\": \"minecraft:story/enter_the_nether\",\n");
-            readme.append("  \"requiredEffect\": \"minecraft:strength\",\n");
-            readme.append("  \"requiredEquipment\": \"minecraft:diamond_pickaxe\",\n");
-            readme.append("  \"requiredDimension\": \"minecraft:overworld\",\n");
-            readme.append("  \"command\": \"title {player} title {\\\"text\\\":\\\"Epic Kill!\\\",\\\"color\\\":\\\"gold\\\"}\",\n");
-            readme.append("  \"commandChance\": 100.0,\n");
-            readme.append("  \"requirePlayerKill\": true,\n");
-            readme.append("  \"allowDefaultDrops\": true\n");
-            readme.append("}\n");
-            readme.append("```\n\n");
-
-            readme.append("4. Command Placeholders\n");
-            readme.append("--------------------\n");
-            readme.append("Use these in your commands to reference specific values:\n\n");
-            
-            readme.append("Player Related:\n");
-            readme.append("- {player}    : Player's name\n");
-            readme.append("- {player_x}  : Player's X coordinate\n");
-            readme.append("- {player_y}  : Player's Y coordinate\n");
-            readme.append("- {player_z}  : Player's Z coordinate\n\n");
-            
-            readme.append("Entity Related:\n");
-            readme.append("- {entity}    : Killed entity's name\n");
-            readme.append("- {entity_id} : Entity's Minecraft ID\n");
-            readme.append("- {entity_x}  : Entity's X coordinate\n");
-            readme.append("- {entity_y}  : Entity's Y coordinate\n");
-            readme.append("- {entity_z}  : Entity's Z coordinate\n\n");
-            
-            readme.append("5. Requirements System\n");
-            readme.append("-------------------\n\n");
-            
-            readme.append("A. Advancements:\n");
-            readme.append("Use \"requiredAdvancement\" to check if a player has completed specific advancements:\n");
-            readme.append("```json\n");
-            readme.append("\"requiredAdvancement\": \"minecraft:story/mine_diamond\"  // Must have mined diamonds\n");
-            readme.append("\"requiredAdvancement\": \"minecraft:nether/create_beacon\"  // Must have created a beacon\n");
-            readme.append("```\n\n");
-            
-            readme.append("B. Potion Effects:\n");
-            readme.append("Use \"requiredEffect\" to check if a player has active effects:\n");
-            readme.append("```json\n");
-            readme.append("\"requiredEffect\": \"minecraft:strength\"  // Must have Strength effect\n");
-            readme.append("\"requiredEffect\": \"minecraft:invisibility\"  // Must be invisible\n");
-            readme.append("```\n\n");
-            
-            readme.append("C. Equipment:\n");
-            readme.append("Use \"requiredEquipment\" to check what the player is holding:\n");
-            readme.append("```json\n");
-            readme.append("\"requiredEquipment\": \"minecraft:diamond_sword\"  // Must hold diamond sword\n");
-            readme.append("\"requiredEquipment\": \"minecraft:bow\"  // Must hold a bow\n");
-            readme.append("```\n\n");
-            
-            readme.append("D. Dimensions:\n");
-            readme.append("Use \"requiredDimension\" to check which dimension the player is in:\n");
-            readme.append("```json\n");
-            readme.append("\"requiredDimension\": \"minecraft:overworld\"  // Must be in the overworld\n");
-            readme.append("\"requiredDimension\": \"minecraft:the_nether\"  // Must be in the nether\n");
-            readme.append("\"requiredDimension\": \"minecraft:the_end\"  // Must be in the end\n");
-            readme.append("\"requiredDimension\": \"mymod:custom_dimension\"  // Must be in a custom dimension\n");
-            readme.append("```\n\n");
-
-            readme.append("6. Command Examples\n");
-            readme.append("----------------\n\n");
-            
-            readme.append("A. Effects and Sounds:\n");
-            readme.append("```json\n");
-            readme.append("\"command\": \"effect give {player} minecraft:regeneration 10 1\"  // Give regeneration\n");
-            readme.append("\"command\": \"playsound minecraft:entity.experience_orb.pickup master {player}\"  // Play sound\n");
-            readme.append("```\n\n");
-            
-            readme.append("B. Visual Effects:\n");
-            readme.append("```json\n");
-            readme.append("\"command\": \"particle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\"  // Heart particles\n");
-            readme.append("\"command\": \"title {player} actionbar {\\\"text\\\":\\\"Epic kill!\\\",\\\"color\\\":\\\"gold\\\"}\"  // Show message\n");
-            readme.append("```\n\n");
-            
-            readme.append("C. Complex Commands:\n");
-            readme.append("```json\n");
-            readme.append("\"command\": \"summon minecraft:lightning_bolt {entity_x} {entity_y} {entity_z}\"  // Strike lightning\n");
-            readme.append("\"command\": \"give {player} minecraft:diamond{display:{Name:'{\\\"text\\\":\\\"Reward\\\"}'}}\"  // Give named item\n");
-            readme.append("```\n\n");
-            
-            readme.append("7. Player Commands\n");
-            readme.append("----------------\n");
-            readme.append("The mod provides several commands to control events and settings:\n\n");
-            
-            readme.append("A. Managing Events:\n");
-            readme.append("- /lootdrops event <eventName> true    - Enable an event\n");
-            readme.append("- /lootdrops event <eventName> false   - Disable an event\n");
-            readme.append("- /lootdrops event dropchance true     - Enable 2x drop chance bonus\n");
-            readme.append("- /lootdrops event dropchance false    - Disable drop chance bonus\n\n");
-            readme.append("- /lootdrops event doubledrops true    - Enable 2x item drops bonus\n");
-            readme.append("- /lootdrops event doubledrops false   - Disable item drop bonus\n\n");
-            
-            readme.append("B. Information Commands:\n");
-            readme.append("- /lootdrops active_events             - List all active events\n");
-            readme.append("- /lootdrops listall                   - List all available events\n");
-            readme.append("- /lootdrops openconfig                - Opens custom JSON editor menu\n");
-            readme.append("- /lootdrops reload                    - Reload all configuration files\n");
-            readme.append("- /lootdrops help                      - Show command help\n\n");
-            
-            readme.append("C. Examples:\n");
-            readme.append("- /lootdrops event winter true         - Enable winter event drops\n");
-            readme.append("- /lootdrops event halloween false     - Disable halloween event drops\n");
-            readme.append("- /lootdrops event mycustomevent true  - Enable a custom event\n\n");
-            
-            readme.append("D. Permissions:\n");
-            readme.append("- entitylootdrops.command.event        - Permission to enable/disable events\n");
-            readme.append("- entitylootdrops.command.list         - Permission to list active events\n");
-            readme.append("- entitylootdrops.command.reload       - Permission to reload configurations\n");
-            readme.append("- entitylootdrops.command.admin        - Permission for all commands\n\n");
-            
-            readme.append("8. Events System\n");
-            readme.append("-------------\n");
-            readme.append("- Events are special drop configurations that can be toggled on/off\n");
-            readme.append("- Multiple events can be active simultaneously\n");
-            readme.append("- Event drops stack with normal drops\n");
-            readme.append("- Custom events can be created by adding new folders in the events directory\n");
-            readme.append("- The drop chance event doubles all drop chances when active\n");
-            readme.append("- The double drops event doubles all item drops when active\n\n");
-            
-            readme.append("9. Customizing Event Messages\n");
-            readme.append("----------------------------\n");
-            readme.append("- You can customize the broadcast messages that appear when events are enabled or disabled\n");
-            readme.append("- 1. Edit the `messages.json` file in the config/entitylootdrops directory\n");
-            readme.append("- 2. Customize messages for built-in events or add messages for your custom events\n");
-            readme.append("- 3. Use color codes with § symbol (e.g., §a for green, §c for red, §6 for gold)\n");
-            readme.append("- 4. Changes take effect after reloading the configuration (/lootdrops reload)\n\n");
-
-            readme.append("10. Tips and Best Practices\n");
-            readme.append("-----------------------\n");
-            readme.append("1. Start with small drop chances (1-5%) for valuable items\n");
-            readme.append("2. Use commands sparingly to avoid spam\n");
-            readme.append("3. Test configurations on a test server first\n");
-            readme.append("4. Back up your config files before making major changes\n");
-            readme.append("5. Use meaningful comments in your JSON files\n");
-            readme.append("6. Keep drop chances balanced for game progression\n\n");
-            readme.append("7. You can delete most of the default example generated files, but keep the hostile_drops.json file\n\n");
-            
-            readme.append("11. Common Issues\n");
-            readme.append("-------------\n");
-            readme.append("1. Invalid JSON: Check your syntax, especially with NBT data\n");
-            readme.append("2. Missing Quotes: All strings need double quotes\n");
-            readme.append("3. Wrong IDs: Verify Minecraft IDs are correct (include \"minecraft:\" prefix)\n");
-            readme.append("4. Command Errors: Test commands in-game first\n");
-            readme.append("5. Case Sensitivity: IDs and commands are case-sensitive\n");
-            readme.append("6. Custom Events: Inside your custom event folder, you MUST have at least one of these:\n");
-            readme.append("-  A Global_Hostile_Drops.json file for drops that apply to all hostile mobs\n");
-            readme.append("-  A Mobs folder with entity-specific drop files\n\n");
-
-            Files.write(readmePath, readme.toString().getBytes());
-            LOGGER.info("Created README.txt in config directory");
-        }
-    }
-    
-    /**
- * Creates default drop configuration files in a directory.
- * This includes the hostile_drops.json file and an example mob file.
- * 
- * @param directory The directory to create files in
- * @param eventType The event type (null for normal drops)
+ * Creates a README.txt file with comprehensive documentation.
+ * This file explains how to configure the mod with detailed examples.
  */
-private static void createDefaultDrops(Path directory, String eventType) throws IOException {
-    // First create the mobs directory for entity-specific drops
-    Path mobsDir = directory.resolve(MOBS_DIR);
-    Files.createDirectories(mobsDir);
-    LOGGER.info("Created mobs directory at: {}", mobsDir);
-
-    // Create a hostile drops file if it doesn't exist
-    Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
-    boolean isNewHostileDropsFile = !Files.exists(hostileDropsPath);
-    
-    if (isNewHostileDropsFile) {
-        List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
+private static void createReadmeFile(Path configDir) throws IOException {
+    Path readmePath = configDir.resolve("README.txt");
+    if (!Files.exists(readmePath)) {
+        StringBuilder readme = new StringBuilder();
+        readme.append("Entity Loot Drops - Configuration Guide\n");
+        readme.append("=====================================\n\n");
         
-        // Create a comprehensive example drop for all hostile mobs
-        CustomDropEntry exampleDrop = new CustomDropEntry();
-        exampleDrop.setItemId("minecraft:diamond_sword");
-        exampleDrop.setDropChance(25.0f);
-        exampleDrop.setMinAmount(1);
-        exampleDrop.setMaxAmount(3);
-        exampleDrop.setNbtData("{display:{Name:'{\"text\":\"Ultimate Weapon\",\"color\":\"gold\"}',Lore:['{\"text\":\"Legendary drop example\",\"color\":\"purple\"}','{\"text\":\"Shows all features\",\"color\":\"gray\"}']},Enchantments:[{id:\"minecraft:sharpness\",lvl:5},{id:\"minecraft:smite\",lvl:3},{id:\"minecraft:looting\",lvl:3}]}");
-        exampleDrop.setRequiredAdvancement("minecraft:story/enter_the_nether");
-        exampleDrop.setRequiredEffect("minecraft:strength");
-        exampleDrop.setRequiredEquipment("minecraft:diamond_sword");
-        exampleDrop.setRequiredDimension("minecraft:overworld");
-        exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
-        exampleDrop.setCommandChance(100.0f);
-        exampleDrop.setRequirePlayerKill(true);
-        exampleDrop.setAllowDefaultDrops(true); // Allow default drops
-        exampleDrop.setComment("Complete example showing all available options");
-        defaultHostileDrops.add(exampleDrop);
-
-        // Add an example with default drops disabled
-        CustomDropEntry noDefaultsExample = new CustomDropEntry();
-        noDefaultsExample.setItemId("minecraft:emerald");
-        noDefaultsExample.setDropChance(100.0f);
-        noDefaultsExample.setMinAmount(1);
-        noDefaultsExample.setMaxAmount(3);
-        noDefaultsExample.setRequirePlayerKill(true);
-        noDefaultsExample.setAllowDefaultDrops(false); // Disable default drops
-        List<String> allowedMods = new ArrayList<>();
-        allowedMods.add("examplemod"); // Example mod ID that's allowed to drop items
-        allowedMods.add("anothermod");
-        noDefaultsExample.setAllowModIDs(allowedMods);
-        noDefaultsExample.setComment("Example with vanilla drops disabled but specific mod drops allowed");
-        defaultHostileDrops.add(noDefaultsExample);
-
-        // Add event-specific example if this is an event directory
-        if (eventType != null) {
-            CustomDropEntry eventDrop = new CustomDropEntry();
-            // Configure the drop based on the event type
-            switch (eventType) {
-                case "Winter":
-                    eventDrop.setItemId("minecraft:blue_ice");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Frozen Treasure\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:frost_walker\",lvl:2}]}");
-                    eventDrop.setCommand("particle minecraft:snowflake {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-                case "Summer":
-                    eventDrop.setItemId("minecraft:magma_block");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Summer Heat\",\"color\":\"red\"}'},Enchantments:[{id:\"minecraft:fire_aspect\",lvl:2}]}");
-                    eventDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-                case "Halloween":
-                    eventDrop.setItemId("minecraft:jack_o_lantern");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Spooky Treasure\",\"color\":\"dark_purple\"}'},Enchantments:[{id:\"minecraft:soul_speed\",lvl:3}]}");
-                    eventDrop.setCommand("particle minecraft:soul {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-                case "Easter":
-                    eventDrop.setItemId("minecraft:egg");
-                    eventDrop.setNbtData("{display:{Name:'{\"text\":\"Festive Surprise\",\"color\":\"light_purple\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3}]}");
-                    eventDrop.setCommand("particle minecraft:end_rod {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
-                    break;
-            }
-            if (eventDrop.getItemId() != null) {
-                eventDrop.setDropChance(50.0f);
-                eventDrop.setMinAmount(1);
-                eventDrop.setMaxAmount(3);
-                eventDrop.setRequiredDimension("minecraft:overworld");
-                eventDrop.setCommandChance(100.0f);
-                eventDrop.setRequirePlayerKill(true);
-                eventDrop.setAllowDefaultDrops(true); // Allow default drops for event examples
-                eventDrop.setComment(eventType + " event example drop");
-                defaultHostileDrops.add(eventDrop);
-            }
-        }
+        readme.append("This mod allows you to customize what items drop from mobs, with powerful features like conditional drops, commands, and special effects.\n\n");
         
-        // Write the drops to the file
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(defaultHostileDrops);
-        Files.write(hostileDropsPath, json.getBytes());
-        LOGGER.info("Created test hostile drops at: {}", hostileDropsPath);
+        readme.append("Quick Start:\n");
+        readme.append("-----------\n");
+        readme.append("1. All configuration is done through JSON files\n");
+        readme.append("2. Files are organized in folders for normal drops and event drops\n");
+        readme.append("3. Use /lootdrops commands to control events in-game\n\n");
+
+        readme.append("1. Directory Structure\n");
+        readme.append("----------------------\n");
+        readme.append("config/entitylootdrops/\n");
+        readme.append("|-- Normal Drops/            # Regular drops (always active)\n");
+        readme.append("|   |-- Global_Hostile_Drops.json   # Drops for all hostile mobs\n");
+        readme.append("|   `-- Mobs/                # Entity-specific drops\n");
+        readme.append("|       |-- zombie_drops.json\n");
+        readme.append("|       |-- skeleton_drops.json\n");
+        readme.append("|-- Event Drops/             # Event-specific drops\n");
+        readme.append("    |-- Winter/              # Winter event drops\n");
+        readme.append("    |   |-- Global_Hostile_Drops.json\n");
+        readme.append("    |   `-- Mobs/\n");
+        readme.append("    |-- Summer/              # Summer event drops\n");
+        readme.append("    |-- Easter/              # Easter event drops\n");
+        readme.append("    |-- Halloween/           # Halloween event drops\n");
+        readme.append("    `-- [custom event]/      # Custom event drops\n\n");
+
+        readme.append("2. Drop Configuration Format\n");
+        readme.append("-------------------------\n");
+        readme.append("All drop configurations use JSON format with these properties:\n\n");
         
-        // Only create example mob file if we just created the hostile_drops.json file
-        createExampleMobFile(mobsDir, eventType);
+        readme.append("Basic Properties:\n");
+        readme.append("- \"_comment\": Comment for documentation\n");
+        readme.append("- itemId: The Minecraft item ID (e.g., \"minecraft:diamond\")\n");
+        readme.append("- dropChance: Percentage chance to drop (0-100)\n");
+        readme.append("- minAmount: Minimum number of items to drop\n");
+        readme.append("- maxAmount: Maximum number of items to drop\n");
+        readme.append("- requirePlayerKill: If true, only drops when killed by a player\n");
+        readme.append("- allowDefaultDrops: If false, disables vanilla drops\n");
+        readme.append("- allowModIDs: List of mod IDs allowed to drop items when allowDefaultDrops is false\n\n");
+        
+        readme.append("Advanced Properties:\n");
+        readme.append("- nbtData: Custom NBT data for the item (enchantments, names, etc.)\n");
+        readme.append("- command: Command to execute when the mob dies\n");
+        readme.append("- commandChance: Percentage chance for the command to execute\n");
+        readme.append("- requiredAdvancement: Player must have this advancement\n");
+        readme.append("- requiredEffect: Player must have this potion effect\n");
+        readme.append("- requiredEquipment: Player must have this item equipped\n");
+        readme.append("- requiredDimension: Player must be in this dimension\n\n");
+        
+        readme.append("3. Comprehensive Examples\n");
+        readme.append("----------------------\n\n");
+        
+        readme.append("A. Basic Hostile Drop:\n");
+        readme.append("```json\n");
+        readme.append("{\n");
+        readme.append("  \"_comment\": \"Simple diamond drop with 5% chance\",\n");
+        readme.append("  \"itemId\": \"minecraft:diamond\",\n");
+        readme.append("  \"dropChance\": 5.0,\n");
+        readme.append("  \"minAmount\": 1,\n");
+        readme.append("  \"maxAmount\": 2,\n");
+        readme.append("  \"requirePlayerKill\": true\n");
+        readme.append("}\n");
+        readme.append("```\n\n");
+        
+        readme.append("B. Advanced Item Drop with NBT:\n");
+        readme.append("```json\n");
+        readme.append("{\n");
+        readme.append("  \"_comment\": \"Named sword with enchantments\",\n");
+        readme.append("  \"itemId\": \"minecraft:diamond_sword\",\n");
+        readme.append("  \"dropChance\": 10.0,\n");
+        readme.append("  \"minAmount\": 1,\n");
+        readme.append("  \"maxAmount\": 1,\n");
+        readme.append("  \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Legendary Blade\\\",\\\"color\\\":\\\"gold\\\"}',Lore:['{\\\"text\\\":\\\"Ancient power flows through this weapon\\\",\\\"color\\\":\\\"purple\\\"}']},Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5},{id:\\\"minecraft:looting\\\",lvl:3}]}\"\n");
+        readme.append("}\n");
+        readme.append("```\n\n");
+        
+        readme.append("C. Conditional Drop with Command:\n");
+        readme.append("```json\n");
+        readme.append("{\n");
+        readme.append("  \"_comment\": \"Special drop for advanced players\",\n");
+        readme.append("  \"itemId\": \"minecraft:netherite_ingot\",\n");
+        readme.append("  \"dropChance\": 15.0,\n");
+        readme.append("  \"minAmount\": 1,\n");
+        readme.append("  \"maxAmount\": 1,\n");
+        readme.append("  \"requiredAdvancement\": \"minecraft:story/enter_the_nether\",\n");
+        readme.append("  \"requiredEquipment\": \"minecraft:diamond_sword\",\n");
+        readme.append("  \"command\": \"title {player} title {\\\"text\\\":\\\"Legendary Find!\\\",\\\"color\\\":\\\"gold\\\"}\",\n");
+        readme.append("  \"commandChance\": 100.0\n");
+        readme.append("}\n");
+        readme.append("```\n\n");
+        
+        readme.append("D. Entity-Specific Drop (for Mobs folder):\n");
+        readme.append("```json\n");
+        readme.append("{\n");
+        readme.append("  \"_comment\": \"Special zombie drop\",\n");
+        readme.append("  \"entityId\": \"minecraft:zombie\",\n");
+        readme.append("  \"itemId\": \"minecraft:rotten_flesh\",\n");
+        readme.append("  \"dropChance\": 50.0,\n");
+        readme.append("  \"minAmount\": 2,\n");
+        readme.append("  \"maxAmount\": 5,\n");
+        readme.append("  \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Purified Flesh\\\",\\\"color\\\":\\\"green\\\"}'}}\"\n");
+        readme.append("}\n");
+        readme.append("```\n\n");
+        
+        readme.append("E. Disabling Vanilla Drops:\n");
+        readme.append("```json\n");
+        readme.append("{\n");
+        readme.append("  \"_comment\": \"Replace vanilla drops with custom ones\",\n");
+        readme.append("  \"itemId\": \"minecraft:emerald\",\n");
+        readme.append("  \"dropChance\": 100.0,\n");
+        readme.append("  \"minAmount\": 1,\n");
+        readme.append("  \"maxAmount\": 3,\n");
+        readme.append("  \"requirePlayerKill\": true,\n");
+        readme.append("  \"allowDefaultDrops\": false,\n");
+        readme.append("  \"allowModIDs\": [\"examplemod\", \"anothermod\"]\n");
+        readme.append("}\n");
+        readme.append("```\n\n");
+        
+        readme.append("F. Complete Example with All Options:\n");
+        readme.append("```json\n");
+        readme.append("{\n");
+        readme.append("  \"_comment\": \"Example showing all available options\",\n");
+        readme.append("  \"entityId\": \"minecraft:zombie\",\n");
+        readme.append("  \"itemId\": \"minecraft:diamond_sword\",\n");
+        readme.append("  \"dropChance\": 10.0,\n");
+        readme.append("  \"minAmount\": 1,\n");
+        readme.append("  \"maxAmount\": 3,\n");
+        readme.append("  \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Ultimate Sword\\\",\\\"color\\\":\\\"gold\\\"}',Lore:['{\\\"text\\\":\\\"A powerful weapon\\\",\\\"color\\\":\\\"purple\\\"}']},Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5},{id:\\\"minecraft:looting\\\",lvl:3}]}\",\n");
+        readme.append("  \"requiredAdvancement\": \"minecraft:story/enter_the_nether\",\n");
+        readme.append("  \"requiredEffect\": \"minecraft:strength\",\n");
+        readme.append("  \"requiredEquipment\": \"minecraft:diamond_pickaxe\",\n");
+        readme.append("  \"requiredDimension\": \"minecraft:overworld\",\n");
+        readme.append("  \"command\": \"title {player} title {\\\"text\\\":\\\"Epic Kill!\\\",\\\"color\\\":\\\"gold\\\"}\\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\",\n");
+        readme.append("  \"commandChance\": 100.0,\n");
+        readme.append("  \"requirePlayerKill\": true,\n");
+        readme.append("  \"allowDefaultDrops\": true,\n");
+        readme.append("  \"allowModIDs\": [\"examplemod\"]\n");
+        readme.append("}\n");
+        readme.append("```\n\n");
+
+        readme.append("4. Command Placeholders\n");
+        readme.append("--------------------\n");
+        readme.append("Use these in your commands to reference specific values:\n\n");
+        
+        readme.append("Player Related:\n");
+        readme.append("- {player}    : Player's name\n");
+        readme.append("- {player_x}  : Player's X coordinate\n");
+        readme.append("- {player_y}  : Player's Y coordinate\n");
+        readme.append("- {player_z}  : Player's Z coordinate\n\n");
+        
+        readme.append("Entity Related:\n");
+        readme.append("- {entity}    : Killed entity's name\n");
+        readme.append("- {entity_id} : Entity's Minecraft ID\n");
+        readme.append("- {entity_x}  : Entity's X coordinate\n");
+        readme.append("- {entity_y}  : Entity's Y coordinate\n");
+        readme.append("- {entity_z}  : Entity's Z coordinate\n\n");
+        
+        readme.append("5. Command Examples\n");
+        readme.append("----------------\n");
+        readme.append("- Effect: \"effect give {player} minecraft:regeneration 10 1\"\n");
+        readme.append("- Sound: \"playsound minecraft:entity.experience_orb.pickup master {player}\"\n");
+        readme.append("- Particles: \"particle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\"\n");
+        readme.append("- Message: \"title {player} actionbar {\\\"text\\\":\\\"Epic kill!\\\",\\\"color\\\":\\\"gold\\\"}\"\n");
+        readme.append("- Lightning: \"summon minecraft:lightning_bolt {entity_x} {entity_y} {entity_z}\"\n");
+        readme.append("- Multiple commands: Use \\n to separate commands\n\n");
+        
+        readme.append("6. Player Commands\n");
+        readme.append("----------------\n");
+        readme.append("Event Management:\n");
+        readme.append("- /lootdrops event <eventName> true|false - Enable/disable an event\n");
+        readme.append("- /lootdrops event dropchance true|false - Enable/disable 2x drop chance\n");
+        readme.append("- /lootdrops event doubledrops true|false - Enable/disable 2x drop amounts\n\n");
+        
+        readme.append("Information Commands:\n");
+        readme.append("- /lootdrops active_events - List all active events\n");
+        readme.append("- /lootdrops listall - List all available events\n");
+        readme.append("- /lootdrops openconfig - Opens custom JSON editor menu\n");
+        readme.append("- /lootdrops reload - Reload all configuration files\n");
+        readme.append("- /lootdrops debug true|false - Enable/disable debug logging\n\n");
+        
+        readme.append("7. Events System\n");
+        readme.append("-------------\n");
+        readme.append("- Events are special drop configurations that can be toggled on/off\n");
+        readme.append("- Multiple events can be active simultaneously\n");
+        readme.append("- Event drops stack with normal drops\n");
+        readme.append("- Custom events can be created by adding new folders in the events directory\n");
+        readme.append("- The drop chance event doubles all drop chances when active\n");
+        readme.append("- The double drops event doubles all item drops when active\n\n");
+        
+        readme.append("8. Tips and Best Practices\n");
+        readme.append("-----------------------\n");
+        readme.append("1. Start with small drop chances (1-5%) for valuable items\n");
+        readme.append("2. Use commands sparingly to avoid spam\n");
+        readme.append("3. Test configurations on a test server first\n");
+        readme.append("4. Back up your config files before making major changes\n");
+        readme.append("5. Use meaningful comments in your JSON files\n");
+        readme.append("6. Keep drop chances balanced for game progression\n");
+        readme.append("7. You can delete most of the default example generated files, but keep the Global_Hostile_Drops.json file\n\n");
+        
+        readme.append("9. Common Issues\n");
+        readme.append("-------------\n");
+        readme.append("1. Invalid JSON: Check your syntax, especially with NBT data\n");
+        readme.append("2. Missing Quotes: All strings need double quotes\n");
+        readme.append("3. Wrong IDs: Verify Minecraft IDs are correct (include \"minecraft:\" prefix)\n");
+        readme.append("4. Command Errors: Test commands in-game first\n");
+        readme.append("5. Case Sensitivity: IDs and commands are case-sensitive\n");
+        readme.append("6. Custom Events: Inside your custom event folder, you MUST have at least one of these:\n");
+        readme.append("   - A Global_Hostile_Drops.json file for drops that apply to all hostile mobs\n");
+        readme.append("   - A Mobs folder with entity-specific drop files\n\n");
+
+        Files.write(readmePath, readme.toString().getBytes());
+        LOGGER.info("Created README.txt in config directory");
     }
 }
 
-/**
- * Creates an example mob-specific drop file.
- * 
- * @param mobsDir The mobs directory to create the file in
- * @param eventType The event type (null for normal drops)
- */
+    
+    /**
+     * Creates default drop configuration files in a directory.
+     * This includes the hostile_drops.json file and an example mob file.
+     * 
+     * @param directory The directory to create files in
+     * @param eventType The event type (null for normal drops)
+     */
+    private static void createDefaultDrops(Path directory, String eventType) throws IOException {
+        // First create the mobs directory for entity-specific drops
+        Path mobsDir = directory.resolve(MOBS_DIR);
+        Files.createDirectories(mobsDir);
+        LOGGER.info("Created mobs directory at: {}", mobsDir);
+    
+        // Create a hostile drops file if it doesn't exist
+        Path hostileDropsPath = directory.resolve(HOSTILE_DROPS_FILE);
+        boolean isNewHostileDropsFile = !Files.exists(hostileDropsPath);
+        
+        if (isNewHostileDropsFile) {
+            List<CustomDropEntry> defaultHostileDrops = new ArrayList<>();
+            
+            // Create a comprehensive example drop for all hostile mobs
+            CustomDropEntry exampleDrop = new CustomDropEntry();
+            exampleDrop.setItemId("minecraft:diamond_sword");
+            exampleDrop.setDropChance(25.0f);
+            exampleDrop.setMinAmount(1);
+            exampleDrop.setMaxAmount(3);
+            exampleDrop.setNbtData("{display:{Name:'{\"text\":\"Ultimate Weapon\",\"color\":\"gold\"}',Lore:['{\"text\":\"Legendary drop example\",\"color\":\"purple\"}','{\"text\":\"Shows all features\",\"color\":\"gray\"}']},Enchantments:[{id:\"minecraft:sharpness\",lvl:5},{id:\"minecraft:smite\",lvl:3},{id:\"minecraft:looting\",lvl:3}]}");
+            exampleDrop.setRequiredAdvancement("minecraft:story/enter_the_nether");
+            exampleDrop.setRequiredEffect("minecraft:strength");
+            exampleDrop.setRequiredEquipment("minecraft:diamond_sword");
+            exampleDrop.setRequiredDimension("minecraft:overworld");
+            exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
+            exampleDrop.setCommandChance(100.0f);
+            exampleDrop.setRequirePlayerKill(true);
+            exampleDrop.setAllowDefaultDrops(true); // Allow default drops
+            exampleDrop.setComment("Complete example showing all available options");
+            defaultHostileDrops.add(exampleDrop);
+    
+            // Add an example with default drops disabled
+            CustomDropEntry noDefaultsExample = new CustomDropEntry();
+            noDefaultsExample.setItemId("minecraft:emerald");
+            noDefaultsExample.setDropChance(100.0f);
+            noDefaultsExample.setMinAmount(1);
+            noDefaultsExample.setMaxAmount(3);
+            noDefaultsExample.setRequirePlayerKill(true);
+            noDefaultsExample.setAllowDefaultDrops(false); // Disable default drops
+            List<String> allowedMods = new ArrayList<>();
+            allowedMods.add("examplemod"); // Example mod ID that's allowed to drop items
+            allowedMods.add("anothermod");
+            noDefaultsExample.setAllowModIDs(allowedMods);
+            noDefaultsExample.setComment("Example with vanilla drops disabled but specific mod drops allowed");
+            defaultHostileDrops.add(noDefaultsExample);
+    
+            // Add event-specific example if this is an event directory
+            if (eventType != null) {
+                CustomDropEntry eventDrop = new CustomDropEntry();
+                // Configure the drop based on the event type
+                switch (eventType) {
+                    case "Winter":
+                        eventDrop.setItemId("minecraft:blue_ice");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Frozen Treasure\",\"color\":\"aqua\"}'},Enchantments:[{id:\"minecraft:frost_walker\",lvl:2}]}");
+                        eventDrop.setCommand("particle minecraft:snowflake {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                    case "Summer":
+                        eventDrop.setItemId("minecraft:magma_block");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Summer Heat\",\"color\":\"red\"}'},Enchantments:[{id:\"minecraft:fire_aspect\",lvl:2}]}");
+                        eventDrop.setCommand("particle minecraft:flame {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                    case "Halloween":
+                        eventDrop.setItemId("minecraft:jack_o_lantern");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Spooky Treasure\",\"color\":\"dark_purple\"}'},Enchantments:[{id:\"minecraft:soul_speed\",lvl:3}]}");
+                        eventDrop.setCommand("particle minecraft:soul {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                    case "Easter":
+                        eventDrop.setItemId("minecraft:egg");
+                        eventDrop.setNbtData("{display:{Name:'{\"text\":\"Festive Surprise\",\"color\":\"light_purple\"}'},Enchantments:[{id:\"minecraft:luck_of_the_sea\",lvl:3}]}");
+                        eventDrop.setCommand("particle minecraft:end_rod {entity_x} {entity_y} {entity_z} 1 1 1 0.1 50");
+                        break;
+                }
+                if (eventDrop.getItemId() != null) {
+                    eventDrop.setDropChance(50.0f);
+                    eventDrop.setMinAmount(1);
+                    eventDrop.setMaxAmount(3);
+                    eventDrop.setRequiredDimension("minecraft:overworld");
+                    eventDrop.setCommandChance(100.0f);
+                    eventDrop.setRequirePlayerKill(true);
+                    eventDrop.setComment(eventType + " event example drop");
+                    defaultHostileDrops.add(eventDrop);
+                }
+            }
+            
+            // Write the drops to the file
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            String json = gson.toJson(defaultHostileDrops);
+            Files.write(hostileDropsPath, json.getBytes());
+            LOGGER.info("Created test hostile drops at: {}", hostileDropsPath);
+            
+            // Only create example mob file if we just created the hostile_drops.json file
+            createExampleMobFile(mobsDir, eventType);
+        }
+    }
+
 private static void createExampleMobFile(Path mobsDir, String eventType) throws IOException {
     // Create an example mob file
     String mobFileName = "zombie_example.json";
@@ -660,8 +610,7 @@ private static void createExampleMobFile(Path mobsDir, String eventType) throws 
         exampleMob.setDropChance(30.0f);
         exampleMob.setMinAmount(1);
         exampleMob.setMaxAmount(3);
-        exampleMob.setRequirePlayerKill(true);
-        exampleMob.setAllowDefaultDrops(true); // Allow default drops
+        exampleMob.setRequirePlayerKill(true); // Add this line
         
         // Add event-specific properties if this is for an event
         if (eventType != null) {
@@ -691,33 +640,13 @@ private static void createExampleMobFile(Path mobsDir, String eventType) throws 
             exampleMob.setComment("Example zombie drop configuration");
         }
         
-        // Create a second example with default drops disabled
-        EntityDropEntry noDefaultsExampleMob = new EntityDropEntry();
-        noDefaultsExampleMob.setEntityId("minecraft:zombie");
-        noDefaultsExampleMob.setItemId("minecraft:diamond");
-        noDefaultsExampleMob.setDropChance(100.0f);
-        noDefaultsExampleMob.setMinAmount(1);
-        noDefaultsExampleMob.setMaxAmount(2);
-        noDefaultsExampleMob.setRequirePlayerKill(true);
-        noDefaultsExampleMob.setAllowDefaultDrops(false); // Disable default drops
-        List<String> allowedMods = new ArrayList<>();
-        allowedMods.add("examplemod");
-        noDefaultsExampleMob.setAllowModIDs(allowedMods);
-        noDefaultsExampleMob.setComment("Example with vanilla drops disabled but specific mod drops allowed");
-        
-        // Create a list to hold both examples
-        List<EntityDropEntry> examples = new ArrayList<>();
-        examples.add(exampleMob);
-        examples.add(noDefaultsExampleMob);
-        
-        // Write the examples to the file
+        // Write the example to the file
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(examples);
+        String json = gson.toJson(exampleMob);
         Files.write(exampleMobPath, json.getBytes());
         LOGGER.info("Created example mob file at: {}", exampleMobPath);
     }
 }
-
 
 
     /**
@@ -1250,7 +1179,7 @@ public static class CustomDropEntry {
         this.allowModIDs = new ArrayList<>(); // Initialize empty list of allowed mod IDs
     }
     
-/**
+    /**
  * Gets the Minecraft item ID.
  * 
  * @return The item ID
@@ -1563,9 +1492,11 @@ public String getItemId() {
      * @return True if the mod ID is allowed or if allowDefaultDrops is true
      */
     public boolean isModIDAllowed(String modId) {
+        // If allowDefaultDrops is true, all mods are allowed
         if (allowDefaultDrops) {
             return true;
         }
+        // Otherwise, check if the mod ID is in the allowed list
         return allowModIDs != null && allowModIDs.contains(modId);
     }
 
