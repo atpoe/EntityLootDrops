@@ -1,8 +1,10 @@
 package net.poe.entitylootdrops;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -81,7 +83,8 @@ public class LootEventHandler {
      * 
      * @param event The LivingDropsEvent containing information about the entity and its drops
      */
-    @SubscribeEvent
+
+@SubscribeEvent
 public static void onEntityDrop(LivingDropsEvent event) {
     LivingEntity entity = event.getEntity();
     
@@ -104,7 +107,67 @@ public static void onEntityDrop(LivingDropsEvent event) {
         }
     }
 
-    // Handle vanilla drop modifications only if player killed the entity
+    // Get the entity ID as a string (e.g., "minecraft:zombie")
+    ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+    if (entityId == null) return;
+    
+    String entityIdStr = entityId.toString();
+    boolean isHostile = entity instanceof Enemy;
+
+    // Check if we should disable all default drops (vanilla and modded)
+    boolean disableDefaultDrops = false;
+    Set<String> allowedModIDs = new HashSet<>();
+    Set<String> allowedItemIDs = new HashSet<>();
+    
+    if (isHostile) {
+        // Get the normal hostile drops configuration
+        List<LootConfig.CustomDropEntry> hostileDrops = LootConfig.getNormalHostileDrops();
+        
+        // Check if any entry has allowDefaultDrops set to false
+        for (LootConfig.CustomDropEntry drop : hostileDrops) {
+            if (!drop.isAllowDefaultDrops()) {
+                disableDefaultDrops = true;
+                // Add the drop's itemId to allowed items
+                if (drop.getItemId() != null) {
+                    allowedItemIDs.add(drop.getItemId());
+                }
+                // Add allowed mod IDs
+                if (drop.getAllowModIDs() != null) {
+                    allowedModIDs.addAll(drop.getAllowModIDs());
+                }
+            }
+        }
+        
+        // Also check event-specific hostile drops if any events are active
+        for (String eventName : LootConfig.getActiveEvents()) {
+            String matchingEventName = null;
+            for (String key : LootConfig.getEventDrops().keySet()) {
+                if (key.equalsIgnoreCase(eventName)) {
+                    matchingEventName = key;
+                    break;
+                }
+            }
+            
+            if (matchingEventName != null) {
+                List<LootConfig.CustomDropEntry> eventHostileDrops = LootConfig.getEventHostileDrops(matchingEventName);
+                for (LootConfig.CustomDropEntry drop : eventHostileDrops) {
+                    if (!drop.isAllowDefaultDrops()) {
+                        disableDefaultDrops = true;
+                        // Add the drop's itemId to allowed items
+                        if (drop.getItemId() != null) {
+                            allowedItemIDs.add(drop.getItemId());
+                        }
+                        // Add allowed mod IDs
+                        if (drop.getAllowModIDs() != null) {
+                            allowedModIDs.addAll(drop.getAllowModIDs());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Handle vanilla drop modifications if player killed the entity
     if (playerKilled && player != null) {
         // If drop chance event is active, potentially duplicate vanilla drops
         if (LootConfig.isDropChanceEventActive()) {
@@ -179,12 +242,32 @@ public static void onEntityDrop(LivingDropsEvent event) {
         }
     }
     
-    // Get the entity ID as a string (e.g., "minecraft:zombie")
-    ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
-    if (entityId == null) return;
-    
-    String entityIdStr = entityId.toString();
-    boolean isHostile = entity instanceof Enemy;
+    // Filter drops if needed (after applying drop modifications)
+    if (disableDefaultDrops) {
+        List<ItemEntity> filteredDrops = new ArrayList<>();
+        
+        for (ItemEntity itemEntity : event.getDrops()) {
+            ItemStack stack = itemEntity.getItem();
+            ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(stack.getItem());
+            
+            if (itemId != null) {
+                String itemIdStr = itemId.toString();
+                String modId = itemId.getNamespace();
+                
+                // Keep the drop if it's specifically allowed by itemId or from an allowed mod
+                if (allowedItemIDs.contains(itemIdStr) || allowedModIDs.contains(modId)) {
+                    filteredDrops.add(itemEntity);
+                    logDebug("Keeping drop {} (allowed by configuration)", itemId);
+                } else {
+                    logDebug("Removing drop {} (not in allowed list)", itemId);
+                }
+            }
+        }
+        
+        // Replace the drops with our filtered list
+        event.getDrops().clear();
+        event.getDrops().addAll(filteredDrops);
+    }
 
     // Log kill information if debug is enabled
     if (debugLoggingEnabled) {
@@ -263,144 +346,147 @@ public static void onEntityDrop(LivingDropsEvent event) {
         }
     }
     
-    /**
-     * Processes a single drop entry.
-     */
-    private static void processDropEntry(LivingDropsEvent event, LootConfig.CustomDropEntry drop, 
-        Player player, boolean playerKilled) {
-        try {
-            // Check if this drop requires a player kill
-            if (drop.isRequirePlayerKill() && !playerKilled) {
-                logDebug("Skipping drop {} - requires player kill but entity was not killed by a player", 
-                    drop.getItemId());
-                return;
-            }
-            
-            // Skip if player is null but we need to check player-specific requirements
-            if (player == null && (drop.hasRequiredDimension() || drop.hasRequiredAdvancement() || 
-                drop.hasRequiredEffect() || drop.hasRequiredEquipment())) {
-                logDebug("Skipping drop {} - player-specific requirements but no player killed the entity", 
-                    drop.getItemId());
-                return;
-            }
-
-            // Check dimension requirement
-            if (drop.hasRequiredDimension() && player != null) {
-                ResourceLocation playerDimension = player.level().dimension().location();
-                String requiredDimension = drop.getRequiredDimension();
-                
-                if (!playerDimension.toString().equals(requiredDimension)) {
-                    logDebug("Skipping drop {} - wrong dimension (player in {}, required {})", 
-                        drop.getItemId(), playerDimension, requiredDimension);
-                    return;
-                }
-                logDebug("Dimension requirement met for {}: {}", drop.getItemId(), requiredDimension);
-            }
-            
-            // Check advancement requirement
-            if (drop.hasRequiredAdvancement() && player instanceof ServerPlayer) {
-                ServerPlayer serverPlayer = (ServerPlayer) player;
-                ResourceLocation advancement = new ResourceLocation(drop.getRequiredAdvancement());
-                if (!hasAdvancement(serverPlayer, advancement)) {
-                    logDebug("Skipping drop {} - missing advancement {}", 
-                        drop.getItemId(), advancement);
-                    return;
-                }
-                logDebug("Advancement requirement met for {}: {}", drop.getItemId(), advancement);
-            }
-            
-            // Check potion effect requirement
-            if (drop.hasRequiredEffect() && player != null) {
-                if (!hasEffect(player, drop.getRequiredEffect())) {
-                    logDebug("Skipping drop {} - missing effect {}", 
-                        drop.getItemId(), drop.getRequiredEffect());
-                    return;
-                }
-                logDebug("Effect requirement met for {}: {}", drop.getItemId(), drop.getRequiredEffect());
-            }
-            
-            // Check equipment requirement
-            if (drop.hasRequiredEquipment() && player != null) {
-                if (!hasEquipment(player, drop.getRequiredEquipment())) {
-                    logDebug("Skipping drop {} - missing equipment {}", 
-                        drop.getItemId(), drop.getRequiredEquipment());
-                    return;
-                }
-                logDebug("Equipment requirement met for {}: {}", drop.getItemId(), drop.getRequiredEquipment());
-            }
-            
-            // Calculate drop chance
-            float chance = drop.getDropChance();
-            if (LootConfig.isDropChanceEventActive() && playerKilled) {
-                chance *= 2.0f;
-                logDebug("Drop chance doubled for {}: {}% -> {}%", 
-                    drop.getItemId(), drop.getDropChance(), chance);
-            }
-            
-            // Handle command execution
-            if (drop.hasCommand() && player instanceof ServerPlayer) {
-                float cmdChance = drop.getCommandChance();
-                
-                if (cmdChance <= 0) {
-                    logDebug("Skipping command execution for {} - command chance is {}%", 
-                        drop.getItemId(), cmdChance);
-                } else {
-                    boolean executeCmd = RANDOM.nextFloat() * 100 <= cmdChance;
-                    logDebug("Command chance roll for {}: {}% - Result: {}", 
-                        drop.getItemId(), cmdChance, executeCmd ? "EXECUTE" : "SKIP");
-            
-                    if (executeCmd) {
-                        executeCommand(drop.getCommand(), (ServerPlayer) player, event.getEntity());
-                    }
-                }
-            }
-            
-            // Roll for drop chance
-            if (RANDOM.nextFloat() * 100 <= chance) {
-                ResourceLocation itemId = new ResourceLocation(drop.getItemId());
-                Item item = ForgeRegistries.ITEMS.getValue(itemId);
-                
-                if (item != null) {
-                    int amount = drop.getMinAmount();
-                    if (drop.getMaxAmount() > drop.getMinAmount()) {
-                        amount += RANDOM.nextInt(drop.getMaxAmount() - drop.getMinAmount() + 1);
-                    }
-                    
-                    if (LootConfig.isDoubleDropsActive() && playerKilled) {
-                        amount *= 2;
-                        logDebug("Doubled drop amount for {} to {}", drop.getItemId(), amount);
-                    }
-                    
-                    ItemStack stack = new ItemStack(item, amount);
-                    
-                    if (drop.hasNbtData()) {
-                        try {
-                            CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
-                            stack.setTag(nbt);
-                            logDebug("Applied NBT data to {}: {}", drop.getItemId(), drop.getNbtData());
-                        } catch (CommandSyntaxException e) {
-                            LOGGER.error("Invalid NBT format for {}: {}", drop.getItemId(), e.getMessage());
-                        }
-                    }
-                    
-                    event.getEntity().spawnAtLocation(stack);
-                    
-                    if (LootConfig.isDropChanceEventActive() && playerKilled) {
-                        logDebug("Dropped {} x{} (doubled chance: {}%)", 
-                            drop.getItemId(), amount, chance);
-                    } else {
-                        logDebug("Dropped {} x{} (chance: {}%)", 
-                            drop.getItemId(), amount, chance);
-                    }
-                } else {
-                    LOGGER.error("Invalid item ID for drop: {}", drop.getItemId());
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("Unexpected error processing drop {}: {}", 
-                drop.getItemId(), e.getMessage(), e);
+/**
+ * Processes a single drop entry.
+ */
+private static void processDropEntry(LivingDropsEvent event, LootConfig.CustomDropEntry drop, 
+    Player player, boolean playerKilled) {
+    try {
+        // Check if this drop requires a player kill
+        if (drop.isRequirePlayerKill() && !playerKilled) {
+            logDebug("Skipping drop {} - requires player kill but entity was not killed by a player", 
+                drop.getItemId());
+            return;
         }
+        
+        // Skip if player is null but we need to check player-specific requirements
+        if (player == null && (drop.hasRequiredDimension() || drop.hasRequiredAdvancement() || 
+            drop.hasRequiredEffect() || drop.hasRequiredEquipment())) {
+            logDebug("Skipping drop {} - player-specific requirements but no player killed the entity", 
+                drop.getItemId());
+            return;
+        }
+
+        // Check dimension requirement
+        if (drop.hasRequiredDimension() && player != null) {
+            ResourceLocation playerDimension = player.level().dimension().location();
+            String requiredDimension = drop.getRequiredDimension();
+            
+            if (!playerDimension.toString().equals(requiredDimension)) {
+                logDebug("Skipping drop {} - wrong dimension (player in {}, required {})", 
+                    drop.getItemId(), playerDimension, requiredDimension);
+                return;
+            }
+            logDebug("Dimension requirement met for {}: {}", drop.getItemId(), requiredDimension);
+        }
+        
+        // Check advancement requirement
+        if (drop.hasRequiredAdvancement() && player instanceof ServerPlayer) {
+            ServerPlayer serverPlayer = (ServerPlayer) player;
+            ResourceLocation advancement = new ResourceLocation(drop.getRequiredAdvancement());
+            if (!hasAdvancement(serverPlayer, advancement)) {
+                logDebug("Skipping drop {} - missing advancement {}", 
+                    drop.getItemId(), advancement);
+                return;
+            }
+            logDebug("Advancement requirement met for {}: {}", drop.getItemId(), advancement);
+        }
+        
+        // Check potion effect requirement
+        if (drop.hasRequiredEffect() && player != null) {
+            if (!hasEffect(player, drop.getRequiredEffect())) {
+                logDebug("Skipping drop {} - missing effect {}", 
+                    drop.getItemId(), drop.getRequiredEffect());
+                return;
+            }
+            logDebug("Effect requirement met for {}: {}", drop.getItemId(), drop.getRequiredEffect());
+        }
+        
+        // Check equipment requirement
+        if (drop.hasRequiredEquipment() && player != null) {
+            if (!hasEquipment(player, drop.getRequiredEquipment())) {
+                logDebug("Skipping drop {} - missing equipment {}", 
+                    drop.getItemId(), drop.getRequiredEquipment());
+                return;
+            }
+            logDebug("Equipment requirement met for {}: {}", drop.getItemId(), drop.getRequiredEquipment());
+        }
+        
+        // Calculate drop chance
+        float chance = drop.getDropChance();
+        if (LootConfig.isDropChanceEventActive() && playerKilled) {
+            chance *= 2.0f;
+            logDebug("Drop chance doubled for {}: {}% -> {}%", 
+                drop.getItemId(), drop.getDropChance(), chance);
+        }
+        
+        // Handle command execution
+        if (drop.hasCommand() && player instanceof ServerPlayer) {
+            float cmdChance = drop.getCommandChance();
+            
+            if (cmdChance <= 0) {
+                logDebug("Skipping command execution for {} - command chance is {}%", 
+                    drop.getItemId(), cmdChance);
+            } else {
+                boolean executeCmd = RANDOM.nextFloat() * 100 <= cmdChance;
+                logDebug("Command chance roll for {}: {}% - Result: {}", 
+                    drop.getItemId(), cmdChance, executeCmd ? "EXECUTE" : "SKIP");
+        
+                if (executeCmd) {
+                    executeCommand(drop.getCommand(), (ServerPlayer) player, event.getEntity());
+                }
+            }
+        }
+        
+        // Roll for drop chance
+        if (RANDOM.nextFloat() * 100 <= chance) {
+            ResourceLocation itemId = new ResourceLocation(drop.getItemId());
+            Item item = ForgeRegistries.ITEMS.getValue(itemId);
+            
+            if (item != null) {
+                int amount = drop.getMinAmount();
+                if (drop.getMaxAmount() > drop.getMinAmount()) {
+                    amount += RANDOM.nextInt(drop.getMaxAmount() - drop.getMinAmount() + 1);
+                }
+                
+                // Apply double drops event if active
+                if (LootConfig.isDoubleDropsActive() && playerKilled) {
+                    amount *= 2;
+                    logDebug("Doubled drop amount for {} to {}", drop.getItemId(), amount);
+                }
+                
+                ItemStack stack = new ItemStack(item, amount);
+                
+                if (drop.hasNbtData()) {
+                    try {
+                        CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
+                        stack.setTag(nbt);
+                        logDebug("Applied NBT data to {}: {}", drop.getItemId(), drop.getNbtData());
+                    } catch (CommandSyntaxException e) {
+                        LOGGER.error("Invalid NBT format for {}: {}", drop.getItemId(), e.getMessage());
+                    }
+                }
+                
+                event.getEntity().spawnAtLocation(stack);
+                
+                if (LootConfig.isDropChanceEventActive() && playerKilled) {
+                    logDebug("Dropped {} x{} (doubled chance: {}%)", 
+                        drop.getItemId(), amount, chance);
+                } else {
+                    logDebug("Dropped {} x{} (chance: {}%)", 
+                        drop.getItemId(), amount, chance);
+                }
+            } else {
+                LOGGER.error("Invalid item ID for drop: {}", drop.getItemId());
+            }
+        }
+    } catch (Exception e) {
+        LOGGER.error("Unexpected error processing drop {}: {}", 
+            drop.getItemId(), e.getMessage(), e);
     }
+}
+
+
     
     private static boolean hasAdvancement(ServerPlayer player, ResourceLocation advancement) {
         MinecraftServer server = player.getServer();

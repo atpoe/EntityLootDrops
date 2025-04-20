@@ -173,6 +173,8 @@ public static void setDebugLogging(boolean enabled) {
         private String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
         private String doubleDropsEnableMessage = "§6[Events] §aDouble Drops event has been enabled! §e(2x drop amounts)";
         private String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
+        private boolean allowDefaultDrops = true; // Default to true for backward compatibility
+        private List<String> allowModIDs = new ArrayList<>(); // List of mod IDs that are allowed to drop items
         private String _comment = "Configure broadcast messages for events";
     }
 
@@ -316,7 +318,9 @@ public static void setDebugLogging(boolean enabled) {
             readme.append("- dropChance: Percentage chance to drop (0-100)\n");
             readme.append("- minAmount: Minimum number of items to drop\n");
             readme.append("- maxAmount: Maximum number of items to drop\n");
-            readme.append("- RequirePlayerKill: Determine if the drop is only for player kills\n\n");
+            readme.append("- RequirePlayerKill: Determine if the drop is only for player kills\n");
+            readme.append("- allowDefaultDrops: Set to false to disable vanilla drops (default: true)\n");
+            readme.append("- allowModIDs: List of mod IDs that can still drop items when allowDefaultDrops is false\n\n");
             
             readme.append("Advanced Properties:\n");
             readme.append("- nbtData: Custom NBT data for the item\n");
@@ -372,19 +376,21 @@ public static void setDebugLogging(boolean enabled) {
             readme.append("Complete example showing all available options:\n");
             readme.append("```json\n");
             readme.append("{\n");
-            readme.append("    \"_comment\": \"Example configuration showing all available options\",\n");
-            readme.append("    \"entityId\": \"minecraft:zombie\",\n");
-            readme.append("    \"itemId\": \"minecraft:diamond_sword\",\n");
-            readme.append("    \"dropChance\": 10.0,\n");
-            readme.append("    \"minAmount\": 1,\n");
-            readme.append("    \"maxAmount\": 3,\n");
-            readme.append("    \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Ultimate Sword\\\",\\\"color\\\":\\\"gold\\\"}',Lore:['{\\\"text\\\":\\\"A powerful weapon\\\",\\\"color\\\":\\\"purple\\\"}']},Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5},{id:\\\"minecraft:looting\\\",lvl:3}]}\",\n");
-            readme.append("    \"requiredAdvancement\": \"minecraft:story/enter_the_nether\",\n");
-            readme.append("    \"requiredEffect\": \"minecraft:strength\",\n");
-            readme.append("    \"requiredEquipment\": \"minecraft:diamond_pickaxe\",\n");
-            readme.append("    \"requiredDimension\": \"minecraft:overworld\",\n");
-            readme.append("    \"command\": \"title {player} title {\\\"text\\\":\\\"Epic Kill!\\\",\\\"color\\\":\\\"gold\\\"}\",\n");
-            readme.append("    \"commandChance\": 100.0\n");
+            readme.append("  \"_comment\": \"Complete example showing all available options\",\n");
+            readme.append("  \"entityId\": \"minecraft:zombie\",\n");
+            readme.append("  \"itemId\": \"minecraft:diamond_sword\",\n");
+            readme.append("  \"dropChance\": 10.0,\n");
+            readme.append("  \"minAmount\": 1,\n");
+            readme.append("  \"maxAmount\": 3,\n");
+            readme.append("  \"nbtData\": \"{display:{Name:'{\\\"text\\\":\\\"Ultimate Sword\\\",\\\"color\\\":\\\"gold\\\"}',Lore:['{\\\"text\\\":\\\"A powerful weapon\\\",\\\"color\\\":\\\"purple\\\"}']},Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5},{id:\\\"minecraft:looting\\\",lvl:3}]}\",\n");
+            readme.append("  \"requiredAdvancement\": \"minecraft:story/enter_the_nether\",\n");
+            readme.append("  \"requiredEffect\": \"minecraft:strength\",\n");
+            readme.append("  \"requiredEquipment\": \"minecraft:diamond_pickaxe\",\n");
+            readme.append("  \"requiredDimension\": \"minecraft:overworld\",\n");
+            readme.append("  \"command\": \"title {player} title {\\\"text\\\":\\\"Epic Kill!\\\",\\\"color\\\":\\\"gold\\\"}\",\n");
+            readme.append("  \"commandChance\": 100.0,\n");
+            readme.append("  \"requirePlayerKill\": true,\n");
+            readme.append("  \"allowDefaultDrops\": true\n");
             readme.append("}\n");
             readme.append("```\n\n");
 
@@ -533,13 +539,13 @@ public static void setDebugLogging(boolean enabled) {
     }
     
     /**
-     * Creates default drop configuration files in a directory.
-     * This includes the hostile_drops.json file and an example mob file.
-     * 
-     * @param directory The directory to create files in
-     * @param eventType The event type (null for normal drops)
-     */
-    private static void createDefaultDrops(Path directory, String eventType) throws IOException {
+ * Creates default drop configuration files in a directory.
+ * This includes the hostile_drops.json file and an example mob file.
+ * 
+ * @param directory The directory to create files in
+ * @param eventType The event type (null for normal drops)
+ */
+private static void createDefaultDrops(Path directory, String eventType) throws IOException {
     // First create the mobs directory for entity-specific drops
     Path mobsDir = directory.resolve(MOBS_DIR);
     Files.createDirectories(mobsDir);
@@ -565,9 +571,25 @@ public static void setDebugLogging(boolean enabled) {
         exampleDrop.setRequiredDimension("minecraft:overworld");
         exampleDrop.setCommand("title {player} title {\"text\":\"Epic Drop!\",\"color\":\"gold\"}\nparticle minecraft:heart {entity_x} {entity_y} {entity_z} 1 1 1 0.1 20\neffect give {player} minecraft:regeneration 10 1");
         exampleDrop.setCommandChance(100.0f);
-        exampleDrop.setRequirePlayerKill(true); // Add this line
+        exampleDrop.setRequirePlayerKill(true);
+        exampleDrop.setAllowDefaultDrops(true); // Allow default drops
         exampleDrop.setComment("Complete example showing all available options");
         defaultHostileDrops.add(exampleDrop);
+
+        // Add an example with default drops disabled
+        CustomDropEntry noDefaultsExample = new CustomDropEntry();
+        noDefaultsExample.setItemId("minecraft:emerald");
+        noDefaultsExample.setDropChance(100.0f);
+        noDefaultsExample.setMinAmount(1);
+        noDefaultsExample.setMaxAmount(3);
+        noDefaultsExample.setRequirePlayerKill(true);
+        noDefaultsExample.setAllowDefaultDrops(false); // Disable default drops
+        List<String> allowedMods = new ArrayList<>();
+        allowedMods.add("examplemod"); // Example mod ID that's allowed to drop items
+        allowedMods.add("anothermod");
+        noDefaultsExample.setAllowModIDs(allowedMods);
+        noDefaultsExample.setComment("Example with vanilla drops disabled but specific mod drops allowed");
+        defaultHostileDrops.add(noDefaultsExample);
 
         // Add event-specific example if this is an event directory
         if (eventType != null) {
@@ -601,7 +623,8 @@ public static void setDebugLogging(boolean enabled) {
                 eventDrop.setMaxAmount(3);
                 eventDrop.setRequiredDimension("minecraft:overworld");
                 eventDrop.setCommandChance(100.0f);
-                eventDrop.setRequirePlayerKill(true); // Add this line
+                eventDrop.setRequirePlayerKill(true);
+                eventDrop.setAllowDefaultDrops(true); // Allow default drops for event examples
                 eventDrop.setComment(eventType + " event example drop");
                 defaultHostileDrops.add(eventDrop);
             }
@@ -618,6 +641,12 @@ public static void setDebugLogging(boolean enabled) {
     }
 }
 
+/**
+ * Creates an example mob-specific drop file.
+ * 
+ * @param mobsDir The mobs directory to create the file in
+ * @param eventType The event type (null for normal drops)
+ */
 private static void createExampleMobFile(Path mobsDir, String eventType) throws IOException {
     // Create an example mob file
     String mobFileName = "zombie_example.json";
@@ -631,7 +660,8 @@ private static void createExampleMobFile(Path mobsDir, String eventType) throws 
         exampleMob.setDropChance(30.0f);
         exampleMob.setMinAmount(1);
         exampleMob.setMaxAmount(3);
-        exampleMob.setRequirePlayerKill(true); // Add this line
+        exampleMob.setRequirePlayerKill(true);
+        exampleMob.setAllowDefaultDrops(true); // Allow default drops
         
         // Add event-specific properties if this is for an event
         if (eventType != null) {
@@ -661,13 +691,33 @@ private static void createExampleMobFile(Path mobsDir, String eventType) throws 
             exampleMob.setComment("Example zombie drop configuration");
         }
         
-        // Write the example to the file
+        // Create a second example with default drops disabled
+        EntityDropEntry noDefaultsExampleMob = new EntityDropEntry();
+        noDefaultsExampleMob.setEntityId("minecraft:zombie");
+        noDefaultsExampleMob.setItemId("minecraft:diamond");
+        noDefaultsExampleMob.setDropChance(100.0f);
+        noDefaultsExampleMob.setMinAmount(1);
+        noDefaultsExampleMob.setMaxAmount(2);
+        noDefaultsExampleMob.setRequirePlayerKill(true);
+        noDefaultsExampleMob.setAllowDefaultDrops(false); // Disable default drops
+        List<String> allowedMods = new ArrayList<>();
+        allowedMods.add("examplemod");
+        noDefaultsExampleMob.setAllowModIDs(allowedMods);
+        noDefaultsExampleMob.setComment("Example with vanilla drops disabled but specific mod drops allowed");
+        
+        // Create a list to hold both examples
+        List<EntityDropEntry> examples = new ArrayList<>();
+        examples.add(exampleMob);
+        examples.add(noDefaultsExampleMob);
+        
+        // Write the examples to the file
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(exampleMob);
+        String json = gson.toJson(examples);
         Files.write(exampleMobPath, json.getBytes());
         LOGGER.info("Created example mob file at: {}", exampleMobPath);
     }
 }
+
 
 
     /**
@@ -1155,6 +1205,9 @@ public static class CustomDropEntry {
     private String command;             // Command to execute when the drop occurs
     private float commandChance;        // Percentage chance to execute the command (0-100)
     private String _comment;            // Comment for documentation in the JSON file
+    private boolean requirePlayerKill = true; // Default to true for backward compatibility
+    private boolean allowDefaultDrops = true; // Default to true for backward compatibility
+    private List<String> allowModIDs = new ArrayList<>(); // List of mod IDs that are allowed to drop items
     
     /**
      * Default constructor for Gson deserialization.
@@ -1192,16 +1245,19 @@ public static class CustomDropEntry {
         this.maxAmount = maxAmount;
         this.nbtData = nbtData;
         this.commandChance = 100.0f; // Default to 100% if command is specified
+        this.requirePlayerKill = true; // Default to true for backward compatibility
+        this.allowDefaultDrops = true; // Default to true for backward compatibility
+        this.allowModIDs = new ArrayList<>(); // Initialize empty list of allowed mod IDs
     }
     
-    /**
-     * Gets the Minecraft item ID.
-     * 
-     * @return The item ID
-     */
-    public String getItemId() {
-        return itemId;
-    }
+/**
+ * Gets the Minecraft item ID.
+ * 
+ * @return The item ID
+ */
+public String getItemId() {
+    return itemId;
+}
     
     /**
      * Gets the drop chance percentage.
@@ -1446,27 +1502,72 @@ public static class CustomDropEntry {
         this.commandChance = commandChance;
     }
     
-    // Add these to the CustomDropEntry class in LootConfig.java
-private boolean requirePlayerKill = true; // Default to true for backward compatibility
+    /**
+     * Checks if the drop requires a player kill.
+     * 
+     * @return True if the drop requires a player kill
+     */
+    public boolean isRequirePlayerKill() {
+        return requirePlayerKill;
+    }
 
-/**
- * Checks if the drop requires a player kill.
- * 
- * @return True if the drop requires a player kill
- */
-public boolean isRequirePlayerKill() {
-    return requirePlayerKill;
-}
+    /**
+     * Sets whether the drop requires a player kill.
+     * 
+     * @param requirePlayerKill True if the drop requires a player kill
+     */
+    public void setRequirePlayerKill(boolean requirePlayerKill) {
+        this.requirePlayerKill = requirePlayerKill;
+    }
+    
+    /**
+     * Checks if default drops are allowed.
+     * 
+     * @return True if default drops are allowed
+     */
+    public boolean isAllowDefaultDrops() {
+        return allowDefaultDrops;
+    }
 
-/**
- * Sets whether the drop requires a player kill.
- * 
- * @param requirePlayerKill True if the drop requires a player kill
- */
-public void setRequirePlayerKill(boolean requirePlayerKill) {
-    this.requirePlayerKill = requirePlayerKill;
-}
+    /**
+     * Sets whether default drops are allowed.
+     * 
+     * @param allowDefaultDrops True if default drops are allowed
+     */
+    public void setAllowDefaultDrops(boolean allowDefaultDrops) {
+        this.allowDefaultDrops = allowDefaultDrops;
+    }
 
+    /**
+     * Gets the list of mod IDs that are allowed to drop items when allowDefaultDrops is false.
+     * 
+     * @return List of allowed mod IDs
+     */
+    public List<String> getAllowModIDs() {
+        return allowModIDs;
+    }
+
+    /**
+     * Sets the list of mod IDs that are allowed to drop items when allowDefaultDrops is false.
+     * 
+     * @param allowModIDs List of allowed mod IDs
+     */
+    public void setAllowModIDs(List<String> allowModIDs) {
+        this.allowModIDs = allowModIDs != null ? allowModIDs : new ArrayList<>();
+    }
+
+    /**
+     * Checks if a specific mod ID is allowed to drop items.
+     * 
+     * @param modId The mod ID to check
+     * @return True if the mod ID is allowed or if allowDefaultDrops is true
+     */
+    public boolean isModIDAllowed(String modId) {
+        if (allowDefaultDrops) {
+            return true;
+        }
+        return allowModIDs != null && allowModIDs.contains(modId);
+    }
 
     /**
      * Sets the comment for documentation in the JSON file.
@@ -1477,6 +1578,7 @@ public void setRequirePlayerKill(boolean requirePlayerKill) {
         this._comment = comment;
     }
 }
+
 
 /**
  * Represents an entity-specific drop entry.
