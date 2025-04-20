@@ -54,7 +54,7 @@ public class LootConfig {
     private static boolean dropChanceEventActive = false;  // When true, doubles all drop chances
     private static boolean doubleDropsActive = false;      // When true, doubles all drop amounts
     private static boolean debugLoggingEnabled = false; // When true, enables debug logging for drop events
-    // Add these getter and setter methods
+    
 /**
  * Checks if debug logging is enabled.
  * 
@@ -94,6 +94,7 @@ public static void setDebugLogging(boolean enabled) {
         Set<String> previousActiveEvents = new HashSet<>(activeEvents);
         boolean previousDropChanceState = dropChanceEventActive;
         boolean previousDoubleDropsState = doubleDropsActive;
+        boolean previousDebugState = debugLoggingEnabled;
         
         // Create directories and default files if they don't exist
         createConfigDirectories();
@@ -104,17 +105,19 @@ public static void setDebugLogging(boolean enabled) {
         // Load custom message configurations
         loadMessages();
         
-        // Restore active events (but only if they still exist in the config)
-        activeEvents.clear();
-        for (String event : previousActiveEvents) {
-            if (entityDrops.containsKey(event) || hostileDrops.containsKey(event)) {
-                activeEvents.add(event);
-            }
-        }
+        // Load active events state from file
+        loadActiveEventsState();
         
-        // Restore special event states
-        dropChanceEventActive = previousDropChanceState;
-        doubleDropsActive = previousDoubleDropsState;
+        // If no active events were loaded from file, restore previous state
+        if (activeEvents.isEmpty() && !previousActiveEvents.isEmpty()) {
+            activeEvents.addAll(previousActiveEvents);
+            dropChanceEventActive = previousDropChanceState;
+            doubleDropsActive = previousDoubleDropsState;
+            debugLoggingEnabled = previousDebugState;
+            
+            // Save the restored state
+            saveActiveEventsState();
+        }
         
         // Log information about the loaded configuration
         LOGGER.info("Reloaded configuration: {} entity drop types, {} hostile drop types, {} active events", 
@@ -126,6 +129,10 @@ public static void setDebugLogging(boolean enabled) {
         
         if (doubleDropsActive) {
             LOGGER.info("Double drops event is active (2x drop amounts)");
+        }
+        
+        if (debugLoggingEnabled) {
+            LOGGER.info("Debug logging is enabled");
         }
     }
     
@@ -269,7 +276,7 @@ public static void setDebugLogging(boolean enabled) {
         }
     }
     
-    /**
+/**
  * Creates a README.txt file with comprehensive documentation.
  * This file explains how to configure the mod with detailed examples.
  */

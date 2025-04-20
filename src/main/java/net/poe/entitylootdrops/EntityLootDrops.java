@@ -3,18 +3,17 @@ package net.poe.entitylootdrops;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
-import net.minecraftforge.api.distmarker.Dist;
-import net.poe.entitylootdrops.gui.ConfigScreen;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.config.ModConfig.Type;
 import net.poe.entitylootdrops.config.ModConfig;
+import net.poe.entitylootdrops.gui.ConfigScreen;
 
 /**
  * Main mod class for the EntityLootDrops mod.
@@ -99,5 +98,21 @@ public class EntityLootDrops {
         LOGGER.info("Loaded {} hostile drops", LootConfig.getNormalHostileDrops().size());
         LOGGER.info("Loaded {} event types", LootConfig.getEventDrops().size());
         LOGGER.info("Active events: {}", LootConfig.getActiveEvents());
+    }
+    
+    /**
+     * Event handler for server stopping.
+     * This is called when a Minecraft server (including integrated server) is stopping.
+     * Saves the current event states to ensure they persist through restarts.
+     * 
+     * @param event The ServerStoppingEvent
+     */
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        LOGGER.info("Server stopping - saving loot config state...");
+        
+        // Save the current event states when the server stops
+        // This ensures active events persist through server restarts
+        LootConfig.saveActiveEventsState();
     }
 }
