@@ -668,7 +668,7 @@ private static void createExampleMobFile(Path mobsDir, String eventType) throws 
         if (server != null) {
             // Send message to all players
             server.getPlayerList().broadcastSystemMessage(
-                Component.literal(message), false);
+                Component.literal(message), true);
         }
     }
 
