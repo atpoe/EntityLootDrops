@@ -80,10 +80,11 @@ public static void setDebugLogging(boolean enabled) {
     private static Map<String, String> eventDisableMessages = new HashMap<>();
     
     // Default messages for special events
-    private static String dropChanceEnableMessage = "§6[Events] §aDouble Drop Chance event has been enabled! §e(2x drop rates)";
+    private static String dropChanceEnableMessage = "§6[Events] §aDouble Drop Chance §eevent has been enabled! §e(2x drop rates)";
     private static String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
-    private static String doubleDropsEnableMessage = "§6[Events] §aDouble Drops event has been enabled! §e(2x drop amounts)";
+    private static String doubleDropsEnableMessage = "§6[Events] §aDouble Drops §eevent has been enabled! §e(2x drop amounts)";
     private static String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
+
 
     /**
      * Main method to load all configuration files.
@@ -666,9 +667,9 @@ private static void createExampleMobFile(Path mobsDir, String eventType) throws 
         // Get the server instance
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server != null) {
-            // Send message to all players
+            // Send message to all players (false for chat, true for action bar)
             server.getPlayerList().broadcastSystemMessage(
-                Component.literal(message), true);
+                Component.literal(message), false);  // Changed to false to send to chat
         }
     }
 
