@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
@@ -282,7 +283,7 @@ public static void setDebugLogging(boolean enabled) {
  * This file explains how to configure the mod with detailed examples.
  */
 private static void createReadmeFile(Path configDir) throws IOException {
-    Path readmePath = configDir.resolve("README.txt");
+    Path readmePath = configDir.resolve("LootDrops-README.txt");
     if (!Files.exists(readmePath)) {
         StringBuilder readme = new StringBuilder();
         readme.append("Entity Loot Drops - Configuration Guide\n");
@@ -880,41 +881,67 @@ private static void loadActiveEventsState() {
     }
     
     /**
-     * Enables or disables an event.
-     * Broadcasts a message to all players.
-     * 
-     * @param eventName The name of the event
-     * @param active True to enable, false to disable
-     */
-    public static void toggleEvent(String eventName, boolean active) {
-        // Find the actual case-preserved event name from the map
-        String actualEventName = null;
-        for (String key : getEventDrops().keySet()) {
-            if (key.equalsIgnoreCase(eventName)) {
-                actualEventName = key;
-                break;
-            }
-        }
-        
-        // If the event doesn't exist in our map, use the provided name
-        if (actualEventName == null) {
-            actualEventName = eventName;
-        }
-        
-        if (active) {
-            activeEvents.add(actualEventName.toLowerCase());
-            LOGGER.info("Enabled event: {}", actualEventName);
-            String message = eventEnableMessages.getOrDefault(actualEventName.toLowerCase(), 
-                "§6[Events] §a" + actualEventName + " event has been enabled!");
-            broadcastEventMessage(message);
-        } else {
-            activeEvents.remove(actualEventName.toLowerCase());
-            LOGGER.info("Disabled event: {}", actualEventName);
-            String message = eventDisableMessages.getOrDefault(actualEventName.toLowerCase(), 
-                "§6[Events] §c" + actualEventName + " event has been disabled!");
-            broadcastEventMessage(message);
+ * Enables or disables an event.
+ * Broadcasts a message to all players.
+ * 
+ * @param eventName The name of the event
+ * @param active True to enable, false to disable
+ */
+public static void toggleEvent(String eventName, boolean active) {
+    // Find the actual case-preserved event name
+    String actualEventName = null;
+    
+    // First check in the event drops map
+    for (String key : getEventDrops().keySet()) {
+        if (key.equalsIgnoreCase(eventName)) {
+            actualEventName = key;
+            break;
         }
     }
+    
+    // If not found in the map, check the directory structure directly
+    if (actualEventName == null) {
+        Path eventsDir = Paths.get(CONFIG_DIR, EVENTS_DIR);
+        if (Files.exists(eventsDir)) {
+            try {
+                Optional<Path> matchingDir = Files.list(eventsDir)
+                    .filter(Files::isDirectory)
+                    .filter(dir -> dir.getFileName().toString().equalsIgnoreCase(eventName))
+                    .findFirst();
+                
+                if (matchingDir.isPresent()) {
+                    actualEventName = matchingDir.get().getFileName().toString();
+                }
+            } catch (IOException e) {
+                LOGGER.error("Failed to check event directories", e);
+            }
+        }
+    }
+    
+    // If the event doesn't exist anywhere, use the provided name
+    if (actualEventName == null) {
+        actualEventName = eventName;
+        LOGGER.warn("Event '{}' not found in configuration, using name as-is", eventName);
+    }
+    
+    if (active) {
+        activeEvents.add(actualEventName.toLowerCase());
+        LOGGER.info("Enabled event: {}", actualEventName);
+        String message = eventEnableMessages.getOrDefault(actualEventName.toLowerCase(), 
+            "§6[Events] §a" + actualEventName + " event has been enabled!");
+        broadcastEventMessage(message);
+    } else {
+        activeEvents.remove(actualEventName.toLowerCase());
+        LOGGER.info("Disabled event: {}", actualEventName);
+        String message = eventDisableMessages.getOrDefault(actualEventName.toLowerCase(), 
+            "§6[Events] §c" + actualEventName + " event has been disabled!");
+        broadcastEventMessage(message);
+    }
+    
+    // Save the updated state
+    saveActiveEventsState();
+}
+
     
     /**
      * Enables or disables the drop chance event.
@@ -1085,6 +1112,37 @@ public static void clearActiveEvents() {
     public static Set<String> getActiveEvents() {
         return Collections.unmodifiableSet(activeEvents);
     }
+
+/**
+ * Gets all available event names, including custom events.
+ * 
+ * @return A set of all event names
+ */
+public static Set<String> getAllEventNames() {
+    Set<String> eventNames = new HashSet<>();
+    
+    // Add built-in events
+    for (String eventType : EVENT_TYPES) {
+        eventNames.add(eventType);
+    }
+    
+    // Add custom events from directories
+    Path eventsDir = Paths.get(CONFIG_DIR, EVENTS_DIR);
+    if (Files.exists(eventsDir)) {
+        try {
+            Files.list(eventsDir)
+                .filter(Files::isDirectory)
+                .forEach(eventDir -> {
+                    String eventName = eventDir.getFileName().toString();
+                    eventNames.add(eventName);
+                });
+        } catch (IOException e) {
+            LOGGER.error("Failed to list event directories", e);
+        }
+    }
+    
+    return eventNames;
+}
 
     /**
      * Checks if the drop chance event is active.

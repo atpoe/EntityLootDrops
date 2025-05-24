@@ -34,8 +34,8 @@ public class EntityLootDrops {
     public static final Logger LOGGER = LogManager.getLogger();
 
     public static Logger getLogger() {
-    return LOGGER;
-}
+        return LOGGER;
+    }
 
     /**
      * Constructor for the mod class.
@@ -43,29 +43,37 @@ public class EntityLootDrops {
      * Registers event handlers and loads initial configuration.
      */
     public EntityLootDrops() {
-        // Register this class to receive Forge events
-        MinecraftForge.EVENT_BUS.register(this);
-        
-        // Register the loot event handler to receive entity drop events
-        MinecraftForge.EVENT_BUS.register(LootEventHandler.class);
-        
-        // Register the setup event
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
-        
-        LOGGER.info("Entity Loot Drops mod initializing...");
-        
-        // Load the initial configuration
-        // This creates default files if they don't exist
-        LootConfig.loadConfig();
-        
-        LOGGER.info("Initial config load complete");
-        
-        // Register config screen on client side only
-        ModConfig.setConfigLoaded(true);
-        if (FMLEnvironment.dist == Dist.CLIENT) {
-            ConfigScreen.register();
-        }
+    // Register this class to receive Forge events
+    MinecraftForge.EVENT_BUS.register(this);
+    
+    // Register the loot event handler to receive entity drop events
+    MinecraftForge.EVENT_BUS.register(LootEventHandler.class);
+    
+    // Register the block event handler to receive block-related events
+    MinecraftForge.EVENT_BUS.register(BlockEventHandler.class);
+
+    // Register the setup event
+    FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
+    
+    LOGGER.info("Entity Loot Drops mod initializing...");
+    
+    // Load the initial configuration
+    // This creates default files if they don't exist
+    LootConfig.loadConfig();
+    BlockConfig.loadConfig();
+    RecipeConfig.loadConfig();
+    
+    // Create all README files
+    ReadmeManager.createAllReadmeFiles();
+    
+    LOGGER.info("Initial config load complete");
+    
+    // Register config screen on client side only
+    ModConfig.setConfigLoaded(true);
+    if (FMLEnvironment.dist == Dist.CLIENT) {
+        ConfigScreen.register();
     }
+}
     
     /**
      * Setup method called during mod initialization.
@@ -92,12 +100,15 @@ public class EntityLootDrops {
         // Reload configuration when the server starts
         // This ensures any changes made to the config files are applied
         LootConfig.loadConfig();
+        BlockConfig.loadConfig();
         
         // Log debug information about the loaded configuration
         LOGGER.info("Loaded {} normal drops", LootConfig.getNormalDrops().size());
         LOGGER.info("Loaded {} hostile drops", LootConfig.getNormalHostileDrops().size());
         LOGGER.info("Loaded {} event types", LootConfig.getEventDrops().size());
         LOGGER.info("Active events: {}", LootConfig.getActiveEvents());
+        LOGGER.info("Loaded {} block drop types", BlockConfig.getAvailableBlockEvents().size());
+        LOGGER.info("Active block events: {}", BlockConfig.getActiveBlockEvents());
     }
     
     /**
@@ -114,5 +125,6 @@ public class EntityLootDrops {
         // Save the current event states when the server stops
         // This ensures active events persist through server restarts
         LootConfig.saveActiveEventsState();
+        BlockConfig.saveActiveEventsState();
     }
 }

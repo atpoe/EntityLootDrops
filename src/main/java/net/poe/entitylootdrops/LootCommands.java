@@ -47,7 +47,8 @@ public class LootCommands {
                 .suggests((context, builder) -> {
                     // Suggest available events when the player is typing
                     // This provides tab-completion for event names
-                    for (String eventName : LootConfig.getEventDrops().keySet()) {
+                    // FIXED: Changed variable name from 'event' to 'eventName' to avoid conflict
+                    for (String eventName : LootConfig.getAllEventNames()) {
                         builder.suggest(eventName);
                     }
                     return builder.buildFuture();
@@ -58,8 +59,17 @@ public class LootCommands {
                         String eventName = StringArgumentType.getString(context, "eventName");
                         boolean active = BoolArgumentType.getBool(context, "active");
                         
+                        // UPDATED: Check against all event names, not just loaded ones
+                        boolean eventExists = false;
+                        for (String availableEvent : LootConfig.getAllEventNames()) {
+                            if (availableEvent.equalsIgnoreCase(eventName)) {
+                                eventExists = true;
+                                break;
+                            }
+                        }
+                        
                         // Validate that the event exists
-                        if (!LootConfig.getEventDrops().containsKey(eventName)) {
+                        if (!eventExists) {
                             context.getSource().sendFailure(Component.literal("Unknown event: " + eventName));
                             return 0; // Command failed
                         }
@@ -70,10 +80,14 @@ public class LootCommands {
                         // Sync changes to Forge config
                         boolean syncSuccess = ModConfig.syncFromLootConfig();
                         if (!syncSuccess && ModConfig.isConfigLoaded()) {
-                        
-                        // Only show warning if config should be loaded by now
-                        context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                            // Only show warning if config should be loaded by now
+                            context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
                         }
+
+                        // Send success message
+                        String statusMessage = active ? "§aEnabled" : "§cDisabled";
+                        context.getSource().sendSuccess(() -> 
+                            Component.literal(statusMessage + " event: §e" + eventName), true);
 
                         return 1; // Command succeeded
                     })
@@ -96,6 +110,11 @@ public class LootCommands {
                             context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
                         }
                         
+                        // Send success message
+                        String statusMessage = active ? "§aEnabled" : "§cDisabled";
+                        context.getSource().sendSuccess(() -> 
+                            Component.literal(statusMessage + " drop chance event (2x drop rates)"), true);
+                        
                         return 1; // Command succeeded
                     })
                 )
@@ -116,6 +135,12 @@ public class LootCommands {
                         if (!syncSuccess) {
                             context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
                         }
+                        
+                        // Send success message
+                        String statusMessage = active ? "§aEnabled" : "§cDisabled";
+                        context.getSource().sendSuccess(() -> 
+                            Component.literal(statusMessage + " double drops event (2x amounts)"), true);
+                        
                         return 1; // Command succeeded
                     })
                 )
@@ -151,7 +176,7 @@ public class LootCommands {
             )
         );
         
-        // List active events subcommand - /lootdrops list
+        // List active events subcommand - /lootdrops active_events
         // Shows all currently active events
         rootCommand.then(Commands.literal("active_events")
             .executes(context -> {
@@ -205,25 +230,26 @@ public class LootCommands {
             })
         );
         
+        // List all available events subcommand - /lootdrops listall
         rootCommand.then(Commands.literal("listall")
-        .executes(context -> {
-        // Get all available events
-        Set<String> availableEvents = LootConfig.getEventDrops().keySet();
-        
-        if (availableEvents.isEmpty()) {
-            context.getSource().sendSuccess(() -> 
-                Component.literal("§cNo events available"), false);
-        } else {
-            // Build a formatted message with all available events
-            StringBuilder sb = new StringBuilder("§6Available events: §a");
-            sb.append(String.join("§6, §a", availableEvents));
-            
-            // Send the formatted message to the command sender
-            context.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
-        }
-        return 1; // Command succeeded
-    })
-);
+            .executes(context -> {
+                // UPDATED: Use getAllEventNames() instead of getEventDrops().keySet()
+                Set<String> availableEvents = LootConfig.getAllEventNames();
+                
+                if (availableEvents.isEmpty()) {
+                    context.getSource().sendSuccess(() -> 
+                        Component.literal("§cNo events available"), false);
+                } else {
+                    // Build a formatted message with all available events
+                    StringBuilder sb = new StringBuilder("§6Available events: §a");
+                    sb.append(String.join("§6, §a", availableEvents));
+                    
+                    // Send the formatted message to the command sender
+                    context.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
+                }
+                return 1; // Command succeeded
+            })
+        );
 
         // Open config screen subcommand - /lootdrops openconfig
         // Opens the Forge config screen for the mod
