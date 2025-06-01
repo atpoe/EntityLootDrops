@@ -1,12 +1,17 @@
 package net.poe.entitylootdrops;
 
+import java.io.File;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -43,37 +48,41 @@ public class EntityLootDrops {
      * Registers event handlers and loads initial configuration.
      */
     public EntityLootDrops() {
-    // Register this class to receive Forge events
-    MinecraftForge.EVENT_BUS.register(this);
-    
-    // Register the loot event handler to receive entity drop events
-    MinecraftForge.EVENT_BUS.register(LootEventHandler.class);
-    
-    // Register the block event handler to receive block-related events
-    MinecraftForge.EVENT_BUS.register(BlockEventHandler.class);
-
-    // Register the setup event
-    FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
-    
-    LOGGER.info("Entity Loot Drops mod initializing...");
-    
-    // Load the initial configuration
-    // This creates default files if they don't exist
-    LootConfig.loadConfig();
-    BlockConfig.loadConfig();
-    RecipeConfig.loadConfig();
-    
-    // Create all README files
-    ReadmeManager.createAllReadmeFiles();
-    
-    LOGGER.info("Initial config load complete");
-    
-    // Register config screen on client side only
-    ModConfig.setConfigLoaded(true);
-    if (FMLEnvironment.dist == Dist.CLIENT) {
-        ConfigScreen.register();
+        // Register this class to receive Forge events
+        MinecraftForge.EVENT_BUS.register(this);
+        
+        // Register the loot event handler to receive entity drop events
+        MinecraftForge.EVENT_BUS.register(LootEventHandler.class);
+        
+        // Register the block event handler to receive block-related events
+        MinecraftForge.EVENT_BUS.register(BlockEventHandler.class);
+        
+        // Register the fishing event handler to receive fishing-related events
+        MinecraftForge.EVENT_BUS.register(FishingEventHandler.class);
+        
+        // Register the setup event
+        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
+        
+        LOGGER.info("Entity Loot Drops mod initializing...");
+        
+        // Load the initial configuration
+        // This creates default files if they don't exist
+        LootConfig.loadConfig();
+        BlockConfig.loadConfig();
+        RecipeConfig.loadConfig();
+        FishingConfig.loadConfig(new File("config")); // Added FishingConfig initialization
+        
+        // Create all README files
+        ReadmeManager.createAllReadmeFiles();
+        
+        LOGGER.info("Initial config load complete");
+        
+        // Register config screen on client side only
+        ModConfig.setConfigLoaded(true);
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            ConfigScreen.register();
+        }
     }
-}
     
     /**
      * Setup method called during mod initialization.
@@ -101,6 +110,11 @@ public class EntityLootDrops {
         // This ensures any changes made to the config files are applied
         LootConfig.loadConfig();
         BlockConfig.loadConfig();
+        RecipeConfig.loadConfig();
+        FishingConfig.loadConfig(new File("config")); // Added FishingConfig reload
+        
+        // Initialize the recipe cache for crafting events
+        CraftingEventHandler.initRecipeCache();
         
         // Log debug information about the loaded configuration
         LOGGER.info("Loaded {} normal drops", LootConfig.getNormalDrops().size());
@@ -109,6 +123,35 @@ public class EntityLootDrops {
         LOGGER.info("Active events: {}", LootConfig.getActiveEvents());
         LOGGER.info("Loaded {} block drop types", BlockConfig.getAvailableBlockEvents().size());
         LOGGER.info("Active block events: {}", BlockConfig.getActiveBlockEvents());
+        LOGGER.info("Loaded {} fishing drops", FishingConfig.getFishingDrops().size()); // Added fishing drops log
+    }
+    
+    /**
+     * Event handler for server started.
+     * This is called after the server has fully started and recipes are loaded.
+     * This is the proper time to apply recipe replacements.
+     * 
+     * @param event The ServerStartedEvent
+     */
+    @SubscribeEvent(priority = EventPriority.LOW) // Low priority to ensure recipes are loaded first
+    public void onServerStarted(ServerStartedEvent event) {
+        LOGGER.info("Server started - applying recipe replacements...");
+        
+        try {
+            // Apply recipe replacements now that the server is fully started
+            RecipeReplacementHandler.applyRecipeReplacements(event.getServer());
+            
+            // Log recipe replacement statistics
+            LOGGER.info("Recipe replacement summary: {}", RecipeReplacementHandler.getReplacementSummary());
+            
+            // Log debug info if debug logging is enabled
+            if (LOGGER.isDebugEnabled()) {
+                RecipeReplacementHandler.logDebugInfo();
+            }
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to apply recipe replacements during server startup", e);
+        }
     }
     
     /**
@@ -126,5 +169,22 @@ public class EntityLootDrops {
         // This ensures active events persist through server restarts
         LootConfig.saveActiveEventsState();
         BlockConfig.saveActiveEventsState();
+        
+        // Clear recipe caches
+        RecipeReplacementHandler.clearCaches();
+    }
+    
+    /**
+     * Event handler for registering commands.
+     * This is called when the server is registering commands.
+     * 
+     * @param event The RegisterCommandsEvent
+     */
+    @SubscribeEvent
+    public static void onRegisterCommands(RegisterCommandsEvent event) {
+        // Register recipe debug commands (includes find recipe functionality)
+        RecipeDebugCommand.register(event.getDispatcher());
+        
+        LOGGER.info("Registered recipe debug and find recipe commands");
     }
 }

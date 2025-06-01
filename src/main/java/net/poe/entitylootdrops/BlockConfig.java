@@ -201,6 +201,9 @@ public class BlockConfig {
             Path eventsDir = blocksDir.resolve(EVENTS_DIR);
             Files.createDirectories(eventsDir);
             
+            // Check if this is the first time setup (no config files exist)
+            boolean isFirstTimeSetup = !Files.exists(normalDropsDir.resolve(GLOBAL_DROPS_FILE));
+            
             // Create event type directories
             for (String eventType : EVENT_TYPES) {
                 Path eventTypeDir = eventsDir.resolve(eventType);
@@ -211,11 +214,18 @@ public class BlockConfig {
             // Create example configurations in normal drops
             createExampleConfigs(normalDropsDir);
             
+            // Only create initial example files on first setup
+            if (isFirstTimeSetup) {
+                createInitialExamples(normalDropsDir);
+            }
+            
             // Create a custom event example
             Path customEventDir = eventsDir.resolve("Custom_Event_Example");
             if (!Files.exists(customEventDir)) {
                 Files.createDirectories(customEventDir);
                 createExampleConfigs(customEventDir);
+                // Only create initial examples for new custom event
+                createInitialExamples(customEventDir);
             }
             
         } catch (IOException e) {
@@ -263,10 +273,18 @@ public class BlockConfig {
             Files.write(globalDropsFile, gson.toJson(examples).getBytes());
         }
         
-        // Create example block-specific drops
+        // Create example block-specific drops directory
         Path blockTypesDir = directory.resolve(BLOCK_TYPES_DIR);
         Files.createDirectories(blockTypesDir);
+    }
+    
+    /**
+     * Creates initial example files only once during first setup.
+     */
+    private static void createInitialExamples(Path directory) throws IOException {
+        Path blockTypesDir = directory.resolve(BLOCK_TYPES_DIR);
         
+        // Only create these example files if they don't exist AND it's the first time setup
         Path exampleBlockFile = blockTypesDir.resolve("stone_drops.json");
         if (!Files.exists(exampleBlockFile)) {
             BlockDropEntry example = new BlockDropEntry();
@@ -291,7 +309,7 @@ public class BlockConfig {
             example.setDropChance(100.0f);
             example.setMinAmount(1);
             example.setMaxAmount(2);
-            example.setAllowDefaultDrops(false);
+            example.setAllowDefaultDrops(true);
             example.setReplaceDefaultDrops(true);
             example.setComment("Example of replacing coal ore drops with diamonds");
             
