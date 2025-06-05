@@ -1,7 +1,7 @@
 package net.poe.entitylootdrops.config;
 
 import net.poe.entitylootdrops.EntityLootDrops;
-import net.poe.entitylootdrops.LootConfig;
+import net.poe.entitylootdrops.lootdrops.LootConfig;
 
 /**
  * Configuration helper for the EntityLootDrops mod.

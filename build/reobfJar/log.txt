@@ -164,50 +164,86 @@ Writing Output: C:\Users\imaid\Documents\Minecraft Mods\EntityLootDrops\build\re
   net/
   net/poe/
   net/poe/entitylootdrops/
-  net/poe/entitylootdrops/BlockCommands.class
-  net/poe/entitylootdrops/BlockConfig$1.class
-  net/poe/entitylootdrops/BlockConfig$2.class
-  net/poe/entitylootdrops/BlockConfig$3.class
-  net/poe/entitylootdrops/BlockConfig$4.class
-  net/poe/entitylootdrops/BlockConfig$BlockDropEntry.class
-  net/poe/entitylootdrops/BlockConfig$CustomBlockDropEntry.class
-  net/poe/entitylootdrops/BlockConfig.class
-  net/poe/entitylootdrops/BlockEventHandler.class
   net/poe/entitylootdrops/ClientEventHandler.class
-  net/poe/entitylootdrops/CraftingEventHandler.class
   net/poe/entitylootdrops/EntityLootDrops.class
-  net/poe/entitylootdrops/FishingConfig$1.class
-  net/poe/entitylootdrops/FishingConfig$2.class
-  net/poe/entitylootdrops/FishingConfig$FishingDrop.class
-  net/poe/entitylootdrops/FishingConfig$FishingReward.class
-  net/poe/entitylootdrops/FishingConfig.class
-  net/poe/entitylootdrops/FishingEventHandler.class
-  net/poe/entitylootdrops/LootCommands.class
-  net/poe/entitylootdrops/LootConfig$1.class
-  net/poe/entitylootdrops/LootConfig$2.class
-  net/poe/entitylootdrops/LootConfig$3.class
-  net/poe/entitylootdrops/LootConfig$CustomDropEntry.class
-  net/poe/entitylootdrops/LootConfig$EntityDropEntry.class
-  net/poe/entitylootdrops/LootConfig$MessageConfig.class
-  net/poe/entitylootdrops/LootConfig.class
-  net/poe/entitylootdrops/LootEventHandler.class
   net/poe/entitylootdrops/ReadmeManager.class
-  net/poe/entitylootdrops/RecipeCommands.class
-  net/poe/entitylootdrops/RecipeConfig$BaseRecipe.class
-  net/poe/entitylootdrops/RecipeConfig$BrewingRecipe.class
-  net/poe/entitylootdrops/RecipeConfig$CustomRecipe.class
-  net/poe/entitylootdrops/RecipeConfig$FurnaceRecipe.class
-  net/poe/entitylootdrops/RecipeConfig$IngredientEntry.class
-  net/poe/entitylootdrops/RecipeConfig$SmithingRecipe.class
-  net/poe/entitylootdrops/RecipeConfig.class
-  net/poe/entitylootdrops/RecipeDebugCommand.class
-  net/poe/entitylootdrops/RecipeManager.class
-  net/poe/entitylootdrops/RecipeReplacementHandler.class
+  net/poe/entitylootdrops/blockdrops/
+  net/poe/entitylootdrops/blockdrops/BlockConfig.class
+  net/poe/entitylootdrops/blockdrops/config/
+  net/poe/entitylootdrops/blockdrops/config/BlockConfigLoader$1.class
+  net/poe/entitylootdrops/blockdrops/config/BlockConfigLoader$2.class
+  net/poe/entitylootdrops/blockdrops/config/BlockConfigLoader$3.class
+  net/poe/entitylootdrops/blockdrops/config/BlockConfigLoader.class
+  net/poe/entitylootdrops/blockdrops/config/BlockConfigManager.class
+  net/poe/entitylootdrops/blockdrops/events/
+  net/poe/entitylootdrops/blockdrops/events/BlockEventHandler.class
+  net/poe/entitylootdrops/blockdrops/events/BlockEventManager$1.class
+  net/poe/entitylootdrops/blockdrops/events/BlockEventManager.class
+  net/poe/entitylootdrops/blockdrops/model/
+  net/poe/entitylootdrops/blockdrops/model/BlockDropEntry.class
+  net/poe/entitylootdrops/blockdrops/model/CustomBlockDropEntry.class
+  net/poe/entitylootdrops/blockdrops/regeneration/
+  net/poe/entitylootdrops/blockdrops/regeneration/BlockRegenerationManager$1.class
+  net/poe/entitylootdrops/blockdrops/regeneration/BlockRegenerationManager$PersistentRegenerationData.class
+  net/poe/entitylootdrops/blockdrops/regeneration/BlockRegenerationManager.class
+  net/poe/entitylootdrops/blockdrops/regeneration/BlockRegenerationTask.class
+  net/poe/entitylootdrops/commands/
+  net/poe/entitylootdrops/commands/BlockEventCommands.class
+  net/poe/entitylootdrops/commands/FishingCommands.class
+  net/poe/entitylootdrops/commands/LootCommands.class
   net/poe/entitylootdrops/config/
   net/poe/entitylootdrops/config/ModConfig.class
+  net/poe/entitylootdrops/fishing/
+  net/poe/entitylootdrops/fishing/FishingDrop.class
+  net/poe/entitylootdrops/fishing/FishingReward.class
+  net/poe/entitylootdrops/fishing/config/
+  net/poe/entitylootdrops/fishing/config/FishingConfig.class
+  net/poe/entitylootdrops/fishing/config/FishingConfigLoader$1.class
+  net/poe/entitylootdrops/fishing/config/FishingConfigLoader$2.class
+  net/poe/entitylootdrops/fishing/config/FishingConfigLoader.class
+  net/poe/entitylootdrops/fishing/config/FishingDefaultFileCreator.class
+  net/poe/entitylootdrops/fishing/config/FishingDirectoryManager.class
+  net/poe/entitylootdrops/fishing/events/
+  net/poe/entitylootdrops/fishing/events/FishingEventHandler.class
   net/poe/entitylootdrops/gui/
   net/poe/entitylootdrops/gui/ConfigScreen$1.class
   net/poe/entitylootdrops/gui/ConfigScreen$MultilineEditBox.class
   net/poe/entitylootdrops/gui/ConfigScreen$UIState.class
   net/poe/entitylootdrops/gui/ConfigScreen.class
+  net/poe/entitylootdrops/lootdrops/
+  net/poe/entitylootdrops/lootdrops/LootConfig.class
+  net/poe/entitylootdrops/lootdrops/config/
+  net/poe/entitylootdrops/lootdrops/config/LootConfigLoader$1.class
+  net/poe/entitylootdrops/lootdrops/config/LootConfigLoader$2.class
+  net/poe/entitylootdrops/lootdrops/config/LootConfigLoader$3.class
+  net/poe/entitylootdrops/lootdrops/config/LootConfigLoader.class
+  net/poe/entitylootdrops/lootdrops/config/LootConfigManager.class
+  net/poe/entitylootdrops/lootdrops/events/
+  net/poe/entitylootdrops/lootdrops/events/LootEventHandler.class
+  net/poe/entitylootdrops/lootdrops/events/LootEventManager$1.class
+  net/poe/entitylootdrops/lootdrops/events/LootEventManager.class
+  net/poe/entitylootdrops/lootdrops/model/
+  net/poe/entitylootdrops/lootdrops/model/CustomDropEntry.class
+  net/poe/entitylootdrops/lootdrops/model/EntityDropEntry.class
+  net/poe/entitylootdrops/readme/
+  net/poe/entitylootdrops/readme/BlockReadmeCreator.class
+  net/poe/entitylootdrops/readme/EntityReadmeCreator.class
+  net/poe/entitylootdrops/readme/FishingReadmeCreator.class
+  net/poe/entitylootdrops/readme/MainReadmeCreator.class
+  net/poe/entitylootdrops/readme/RecipeReadmeCreator.class
+  net/poe/entitylootdrops/recipes/
+  net/poe/entitylootdrops/recipes/RecipeConfig.class
+  net/poe/entitylootdrops/recipes/config/
+  net/poe/entitylootdrops/recipes/config/RecipeConfigLoader$1.class
+  net/poe/entitylootdrops/recipes/config/RecipeConfigLoader$ExampleCreator.class
+  net/poe/entitylootdrops/recipes/config/RecipeConfigLoader.class
+  net/poe/entitylootdrops/recipes/config/RecipeConfigManager.class
+  net/poe/entitylootdrops/recipes/events/
+  net/poe/entitylootdrops/recipes/events/RecipeEventHandler.class
+  net/poe/entitylootdrops/recipes/model/
+  net/poe/entitylootdrops/recipes/model/RecipeEntry.class
+  net/poe/entitylootdrops/recipes/registration/
+  net/poe/entitylootdrops/recipes/registration/RecipeRegistrationManager.class
+  net/poe/entitylootdrops/utils/
+  net/poe/entitylootdrops/utils/DropUtils.class
   pack.mcmeta

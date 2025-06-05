@@ -26,7 +26,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.fml.ModLoadingContext;
-import net.poe.entitylootdrops.LootConfig;
+import net.poe.entitylootdrops.lootdrops.LootConfig;
 
 /**
  * Custom configuration screen for the EntityLootDrops mod.
