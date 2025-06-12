@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+Specification-Title: entitylootdrops
+Specification-Vendor: entitylootdrops
+Specification-Version: 1
+Implementation-Title: EntityLootDrops
+Implementation-Version: 1.7a
+Implementation-Vendor: entitylootdrops
+Implementation-Timestamp: 2025-06-05T02:43:35+0100
+

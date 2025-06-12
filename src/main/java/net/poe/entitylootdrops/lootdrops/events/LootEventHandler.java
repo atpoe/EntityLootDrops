@@ -13,6 +13,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import net.minecraft.advancements.Advancement;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.resources.ResourceLocation;
@@ -26,6 +27,7 @@ import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.entity.living.LivingDropsEvent;
@@ -34,6 +36,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.poe.entitylootdrops.EntityLootDrops;
 import net.poe.entitylootdrops.lootdrops.LootConfig;
+import net.poe.entitylootdrops.lootdrops.config.EventConfig;
 import net.poe.entitylootdrops.lootdrops.model.CustomDropEntry;
 import net.poe.entitylootdrops.lootdrops.model.EntityDropEntry;
 
@@ -49,562 +52,760 @@ public class LootEventHandler {
     private static final Random RANDOM = new Random();
     // Flag to control debug logging
     private static boolean debugLoggingEnabled = false;
-    
+
     /**
      * Enables or disables debug logging.
-     * 
-     * @param enabled True to enable logging, false to disable
+     *
+     * @param enabled true to enable debug logging, false to disable
      */
     public static void setDebugLogging(boolean enabled) {
         debugLoggingEnabled = enabled;
-        LOGGER.info("Debug logging has been {}", enabled ? "enabled" : "disabled");
+        if (enabled) {
+            LOGGER.info("Debug logging enabled for EntityLootDrops");
+        } else {
+            LOGGER.info("Debug logging disabled for EntityLootDrops");
+        }
     }
-    
-    /**
-     * Checks if debug logging is enabled.
-     * 
-     * @return True if debug logging is enabled
-     */
-    public static boolean isDebugLoggingEnabled() {
-        return debugLoggingEnabled;
-    }
-    
+
     /**
      * Logs a debug message if debug logging is enabled.
-     * 
-     * @param message The message format string
-     * @param params The message parameters
+     *
+     * @param message the message to log
+     * @param args    arguments for the message
      */
-    private static void logDebug(String message, Object... params) {
+    private static void logDebug(String message, Object... args) {
         if (debugLoggingEnabled) {
-            LOGGER.debug(message, params);
+            LOGGER.info("[DEBUG] " + message, args);
         }
     }
-    
+
     /**
-     * Main event handler for entity drops.
-     * This is called whenever an entity dies and drops items.
-     * 
-     * @param event The LivingDropsEvent containing information about the entity and its drops
+     * Main event handler for entity deaths.
+     * Processes custom drops based on configuration.
      */
     @SubscribeEvent
-    public static void onEntityDrop(LivingDropsEvent event) {
+    public static void onLivingDrops(LivingDropsEvent event) {
         LivingEntity entity = event.getEntity();
-        
-        // Check if a player killed the entity (directly or indirectly)
-        boolean playerKilled = false;
-        Player player = null;
-
-        // Check for direct player kill
-        if (event.getSource().getEntity() instanceof Player) {
-            playerKilled = true;
-            player = (Player) event.getSource().getEntity();
-        } 
-        // Check for indirect player kill (fire, etc.)
-        else if (event.getSource().getEntity() == null) {
-            // Get the last damage source if it exists
-            if (entity.getLastHurtByMob() instanceof Player) {
-                playerKilled = true;
-                player = (Player) entity.getLastHurtByMob();
-                logDebug("Indirect player kill detected from: {}", player.getName().getString());
-            }
+        if (entity == null || entity.level().isClientSide) {
+            return;
         }
 
-        // Get the entity ID as a string (e.g., "minecraft:zombie")
-        ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
-        if (entityId == null) return;
-        
-        String entityIdStr = entityId.toString();
+        // Get entity information
+        ResourceLocation entityType = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+        if (entityType == null) {
+            return;
+        }
+
+        String entityIdStr = entityType.toString();
         boolean isHostile = entity instanceof Enemy;
+        boolean playerKilled = event.getSource().getEntity() instanceof Player;
+        Player player = playerKilled ? (Player) event.getSource().getEntity() : null;
 
-        // Check if we should disable vanilla drops for hostile mobs
+        logDebug("Processing drops for {} (hostile: {}, player killed: {})", entityIdStr, isHostile, playerKilled);
+
+        // Phase 1: Handle vanilla drop modifications
+        handleVanillaDropModifications(event, isHostile);
+
+        // Phase 2: Apply drop events to all drops (vanilla and modded)
+        if (playerKilled && player != null) {
+            applyDropEvents(event);
+        }
+
+        // Phase 3: Process extra vanilla drops
+        processExtraVanillaDrops(event, entity, player, entityIdStr, isHostile);
+
+        // Phase 4: Process custom drops
+        processCustomDrops(event, entityIdStr, isHostile, player, playerKilled);
+    }
+
+    /**
+     * Handles vanilla drop modifications for hostile mobs.
+     */
+    private static void handleVanillaDropModifications(LivingDropsEvent event, boolean isHostile) {
+        if (!isHostile) {
+            return;
+        }
+
         boolean cancelVanillaDrops = false;
-        List<String> allowedModIDs = new ArrayList<>();
+        Set<String> allowedModIDs = new HashSet<>();
+        Set<String> configuredItemIds = collectConfiguredItemIds();
 
-        if (isHostile) {
-            // Get the normal hostile drops configuration
-            List<CustomDropEntry> hostileDrops = LootConfig.getNormalHostileDrops();
-            
-            // Check if any entry has allowDefaultDrops set to false
-            for (CustomDropEntry drop : hostileDrops) {
-                if (!drop.isAllowDefaultDrops()) {
-                    // Check dimension requirement if specified
-                    if (drop.hasRequiredDimension() && player != null) {
-                        ResourceLocation playerDimension = player.level().dimension().location();
-                        String requiredDimension = drop.getRequiredDimension();
-                        
-                        if (!playerDimension.toString().equals(requiredDimension)) {
-                            // Skip this entry if dimension doesn't match
-                            logDebug("Skipping allowDefaultDrops=false - wrong dimension (player in {}, required {})", 
-                                playerDimension, requiredDimension);
-                            continue;
-                        }
-                    }
-                    
-                    cancelVanillaDrops = true;
-                    if (drop.getAllowModIDs() != null) {
-                        allowedModIDs.addAll(drop.getAllowModIDs());
-                    }
-                    break;
-                }
+        // Check if any drop entry cancels vanilla drops or specifies allowed mods
+        for (CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
+            if (!drop.isAllowDefaultDrops()) {
+                cancelVanillaDrops = true;
             }
-            
-            // Also check event-specific hostile drops if any events are active
-            for (String eventName : LootConfig.getActiveEvents()) {
-                String matchingEventName = null;
-                for (String key : LootConfig.getEventDrops().keySet()) {
-                    if (key.equalsIgnoreCase(eventName)) {
-                        matchingEventName = key;
-                        break;
-                    }
+            if (drop.getAllowModIDs() != null) {
+                allowedModIDs.addAll(drop.getAllowModIDs());
+            }
+        }
+
+        // Check event drops too
+        for (String eventName : LootConfig.getActiveEvents()) {
+            for (CustomDropEntry drop : LootConfig.getEventHostileDrops(eventName)) {
+                if (!drop.isAllowDefaultDrops()) {
+                    cancelVanillaDrops = true;
                 }
-                
-                if (matchingEventName != null) {
-                    List<CustomDropEntry> eventHostileDrops = LootConfig.getEventHostileDrops(matchingEventName);
-                    for (CustomDropEntry drop : eventHostileDrops) {
-                        if (!drop.isAllowDefaultDrops()) {
-                            // Check dimension requirement if specified
-                            if (drop.hasRequiredDimension() && player != null) {
-                                ResourceLocation playerDimension = player.level().dimension().location();
-                                String requiredDimension = drop.getRequiredDimension();
-                                
-                                if (!playerDimension.toString().equals(requiredDimension)) {
-                                    // Skip this entry if dimension doesn't match
-                                    logDebug("Skipping allowDefaultDrops=false - wrong dimension (player in {}, required {})", 
-                                        playerDimension, requiredDimension);
-                                    continue;
-                                }
-                            }
-                            
-                            cancelVanillaDrops = true;
-                            if (drop.getAllowModIDs() != null) {
-                                allowedModIDs.addAll(drop.getAllowModIDs());
-                            }
-                            break;
-                        }
-                    }
+                if (drop.getAllowModIDs() != null) {
+                    allowedModIDs.addAll(drop.getAllowModIDs());
                 }
             }
         }
-        
-        // Filter vanilla drops if needed
-        if (cancelVanillaDrops) {
-            List<ItemEntity> filteredDrops = new ArrayList<>();
-            
-            // First, collect all itemIds from drop entries
-            Set<String> configuredItemIds = new HashSet<>();
-            for (CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
+
+        if (!cancelVanillaDrops && allowedModIDs.isEmpty()) {
+            return;
+        }
+
+        // Filter drops
+        List<ItemEntity> filteredDrops = new ArrayList<>();
+        for (ItemEntity itemEntity : event.getDrops()) {
+            ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(itemEntity.getItem().getItem());
+            if (itemId != null) {
+                String modId = itemId.getNamespace();
+                String itemIdStr = itemId.toString();
+
+                // Keep the drop if it's from an allowed mod or specified in drop entries
+                boolean keepDrop = allowedModIDs.contains(modId) || configuredItemIds.contains(itemIdStr);
+
+                if (keepDrop) {
+                    filteredDrops.add(itemEntity);
+                    logDebug("Keeping drop {} (allowed mod or specified in drop entries)", itemId);
+                } else {
+                    logDebug("Removing drop {} (not from allowed mod and not specified in drop entries)", itemId);
+                }
+            }
+        }
+
+        // Replace drops with filtered list
+        event.getDrops().clear();
+        event.getDrops().addAll(filteredDrops);
+    }
+
+    /**
+     * Applies drop chance and double drops events to all drops (vanilla and modded).
+     */
+    private static void applyDropEvents(LivingDropsEvent event) {
+        // If drop chance event is active, potentially duplicate drops
+        if (LootConfig.isDropChanceEventActive()) {
+            List<ItemEntity> additionalDrops = new ArrayList<>();
+
+            event.getDrops().forEach(itemEntity -> {
+                if (RANDOM.nextFloat() < 0.5f) {
+                    ItemStack originalStack = itemEntity.getItem();
+                    ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(originalStack.getItem());
+
+                    // Check if this mod should be affected by events
+                    if (itemId != null && EventConfig.isModAllowedForDropEvents(itemId.getNamespace())) {
+                        ItemEntity duplicate = createDuplicateItemEntity(itemEntity);
+                        additionalDrops.add(duplicate);
+                        logDebug("Drop chance event: Duplicated {} from mod {}", itemId, itemId.getNamespace());
+                    }
+                }
+            });
+
+            event.getDrops().addAll(additionalDrops);
+        }
+
+        // If double drops is active, double all drops
+        if (LootConfig.isDoubleDropsActive()) {
+            List<ItemEntity> doubledDrops = new ArrayList<>();
+
+            event.getDrops().forEach(itemEntity -> {
+                ItemStack originalStack = itemEntity.getItem();
+                ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(originalStack.getItem());
+
+                // Check if this mod should be affected by events
+                if (itemId != null && EventConfig.isModAllowedForDropEvents(itemId.getNamespace())) {
+                    ItemEntity duplicate = createDuplicateItemEntity(itemEntity);
+                    doubledDrops.add(duplicate);
+                    logDebug("Double drops event: Doubled {} from mod {}", itemId, itemId.getNamespace());
+                }
+            });
+
+            event.getDrops().addAll(doubledDrops);
+        }
+    }
+
+    /**
+     * Collects all configured item IDs from drop entries.
+     */
+    private static Set<String> collectConfiguredItemIds() {
+        Set<String> configuredItemIds = new HashSet<>();
+
+        // Add from normal hostile drops
+        for (CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
+            if (drop.getItemId() != null) {
+                configuredItemIds.add(drop.getItemId());
+            }
+        }
+
+        // Add from event drops
+        for (String eventName : LootConfig.getActiveEvents()) {
+            List<CustomDropEntry> eventDrops = LootConfig.getEventHostileDrops(eventName);
+            for (CustomDropEntry drop : eventDrops) {
                 if (drop.getItemId() != null) {
                     configuredItemIds.add(drop.getItemId());
                 }
             }
-            
-            // Also check event drops
-            for (String eventName : LootConfig.getActiveEvents()) {
-                List<CustomDropEntry> eventDrops = LootConfig.getEventHostileDrops(eventName);
-                for (CustomDropEntry drop : eventDrops) {
-                    if (drop.getItemId() != null) {
-                        configuredItemIds.add(drop.getItemId());
-                    }
-                }
-            }
-            
-            for (ItemEntity itemEntity : event.getDrops()) {
-                ItemStack stack = itemEntity.getItem();
-                ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(stack.getItem());
-                
-                if (itemId != null) {
-                    String modId = itemId.getNamespace();
-                    String itemIdStr = itemId.toString();
-                    
-                    // Keep the drop if:
-                    // 1. It's from an allowed mod OR
-                    // 2. It matches any itemId in the drop entries
-                    boolean keepDrop = allowedModIDs.contains(modId) || configuredItemIds.contains(itemIdStr);
-                    
-                    if (keepDrop) {
-                        filteredDrops.add(itemEntity);
-                        logDebug("Keeping drop {} (allowed mod or specified in drop entries)", itemId);
-                    } else {
-                        logDebug("Removing drop {} (not from allowed mod and not specified in drop entries)", itemId);
-                    }
-                }
-            }
-            
-            // Replace the drops with our filtered list
-            event.getDrops().clear();
-            event.getDrops().addAll(filteredDrops);
         }
 
-        // Handle vanilla drop modifications only if player killed the entity and vanilla drops aren't cancelled
-        if (playerKilled && player != null && !cancelVanillaDrops) {
-            // If drop chance event is active, potentially duplicate vanilla drops
-            if (LootConfig.isDropChanceEventActive()) {
-                List<ItemEntity> additionalDrops = new ArrayList<>();
-                
-                event.getDrops().forEach(itemEntity -> {
-                    if (RANDOM.nextFloat() < 0.5f) {
-                        ItemStack originalStack = itemEntity.getItem();
-                        ItemStack duplicateStack = new ItemStack(
-                            originalStack.getItem(),
-                            originalStack.getCount()
-                        );
-                        
-                        if (originalStack.hasTag()) {
-                            duplicateStack.setTag(originalStack.getTag().copy());
-                        }
-                        
-                        ItemEntity duplicateEntity = new ItemEntity(
-                            itemEntity.level(),
-                            itemEntity.getX(),
-                            itemEntity.getY(),
-                            itemEntity.getZ(),
-                            duplicateStack
-                        );
-                        
-                        duplicateEntity.setDeltaMovement(itemEntity.getDeltaMovement());
-                        duplicateEntity.setDefaultPickUpDelay();
-                        additionalDrops.add(duplicateEntity);
-                        
-                        logDebug("Added extra vanilla drop for {} due to drop chance event", 
-                            ForgeRegistries.ITEMS.getKey(originalStack.getItem()));
-                    }
-                });
-                
-                event.getDrops().addAll(additionalDrops);
-            }
-            
-            // If double drops is active, double the amount of vanilla drops
-            if (LootConfig.isDoubleDropsActive()) {
-                List<ItemEntity> doubledDrops = new ArrayList<>();
-                
-                event.getDrops().forEach(itemEntity -> {
-                    ItemStack originalStack = itemEntity.getItem();
-                    ItemStack doubledStack = new ItemStack(
-                        originalStack.getItem(),
-                        originalStack.getCount() * 2
-                    );
-                    
-                    if (originalStack.hasTag()) {
-                        doubledStack.setTag(originalStack.getTag().copy());
-                    }
-                    
-                    ItemEntity doubledEntity = new ItemEntity(
-                        itemEntity.level(),
-                        itemEntity.getX(),
-                        itemEntity.getY(),
-                        itemEntity.getZ(),
-                        doubledStack
-                    );
-                    
-                    doubledEntity.setDeltaMovement(itemEntity.getDeltaMovement());
-                    doubledEntity.setDefaultPickUpDelay();
-                    doubledDrops.add(doubledEntity);
-                    
-                    logDebug("Doubled vanilla drop amount for {} to {}", 
-                        ForgeRegistries.ITEMS.getKey(originalStack.getItem()), 
-                        doubledStack.getCount());
-                });
-                
-                event.getDrops().clear();
-                event.getDrops().addAll(doubledDrops);
+        return configuredItemIds;
+    }
+
+    /**
+     * Processes extra vanilla drops for all applicable drop entries.
+     */
+    private static void processExtraVanillaDrops(LivingDropsEvent event, LivingEntity entity,
+                                                 Player player, String entityIdStr, boolean isHostile) {
+        // Process normal entity-specific extra drops
+        for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
+            if (drop.getEntityId().equals(entityIdStr)) {
+                addExtraVanillaDrops(event, drop, player, entity);
             }
         }
 
-        // Log kill information if debug is enabled
-        if (debugLoggingEnabled) {
-            logDebug("Entity death: {} ({})", entityIdStr, 
-                playerKilled ? "Player kill by " + player.getName().getString() : "Non-player kill");
-            logDebug("Death source: {}", event.getSource().getMsgId());
-            if (event.getSource().getEntity() != null) {
-                logDebug("Direct killer: {}", event.getSource().getEntity().getName().getString());
-            }
-            if (entity.getLastHurtByMob() != null) {
-                logDebug("Last attacker: {}", entity.getLastHurtByMob().getName().getString());
+        // Process normal hostile extra drops
+        if (isHostile) {
+            for (CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
+                addExtraVanillaDrops(event, drop, player, entity);
             }
         }
-        
-        // Process normal (always active) entity-specific drops
-        processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player, playerKilled);
-        
-        // Process normal (always active) hostile mob drops if this is a hostile entity
+
+        // Process event-specific extra drops
+        for (String eventName : LootConfig.getActiveEvents()) {
+            String matchingEventName = findMatchingEventName(eventName);
+            if (matchingEventName != null) {
+                processEventExtraDrops(event, entityIdStr, matchingEventName, player, entity, isHostile);
+            }
+        }
+    }
+
+    /**
+     * Processes event-specific extra drops.
+     */
+    private static void processEventExtraDrops(LivingDropsEvent event, String entityIdStr, String eventName,
+                                               Player player, LivingEntity entity, boolean isHostile) {
+        // Process event entity-specific extra drops
+        List<EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(eventName);
+        if (eventDropList != null) {
+            for (EntityDropEntry drop : eventDropList) {
+                if (drop.getEntityId().equals(entityIdStr)) {
+                    addExtraVanillaDrops(event, drop, player, entity);
+                }
+            }
+        }
+
+        // Process event hostile extra drops
+        if (isHostile) {
+            for (CustomDropEntry drop : LootConfig.getEventHostileDrops(eventName)) {
+                addExtraVanillaDrops(event, drop, player, entity);
+            }
+        }
+    }
+
+    /**
+     * Adds extra vanilla drops based on the extraDropChance setting.
+     */
+    private static void addExtraVanillaDrops(LivingDropsEvent event, CustomDropEntry drop, Player player, LivingEntity entity) {
+        if (drop.getExtraDropChance() <= 0 || !checkDropRequirements(drop, player)) {
+            return;
+        }
+
+        float extraDropRoll = RANDOM.nextFloat() * 100;
+        if (extraDropRoll <= drop.getExtraDropChance()) {
+            int extraMultiplier = calculateAmount(drop.getExtraAmountMin(), drop.getExtraAmountMax());
+            List<ItemEntity> extraDrops = duplicateVanillaDrops(event, extraMultiplier);
+
+            event.getDrops().addAll(extraDrops);
+            logDebug("Added {} extra vanilla drops ({}x multiplier)", extraDrops.size(), extraMultiplier);
+        }
+    }
+
+    /**
+     * Duplicates vanilla drops with a multiplier.
+     */
+    private static List<ItemEntity> duplicateVanillaDrops(LivingDropsEvent event, int multiplier) {
+        List<ItemEntity> duplicates = new ArrayList<>();
+
+        for (ItemEntity itemEntity : event.getDrops()) {
+            for (int i = 0; i < multiplier; i++) {
+                ItemEntity duplicate = createDuplicateItemEntity(itemEntity);
+                duplicates.add(duplicate);
+            }
+        }
+
+        return duplicates;
+    }
+
+    /**
+     * Creates a duplicate of an ItemEntity.
+     */
+    private static ItemEntity createDuplicateItemEntity(ItemEntity original) {
+        ItemStack originalStack = original.getItem();
+        ItemStack duplicateStack = new ItemStack(originalStack.getItem(), originalStack.getCount());
+
+        if (originalStack.hasTag()) {
+            duplicateStack.setTag(originalStack.getTag().copy());
+        }
+
+        ItemEntity duplicate = new ItemEntity(
+                original.level(),
+                original.getX(),
+                original.getY(),
+                original.getZ(),
+                duplicateStack
+        );
+
+        duplicate.setDeltaMovement(original.getDeltaMovement());
+        duplicate.setDefaultPickUpDelay();
+
+        return duplicate;
+    }
+
+    /**
+     * Processes all custom drops.
+     */
+    private static void processCustomDrops(LivingDropsEvent event, String entityIdStr, boolean isHostile,
+                                           Player player, boolean playerKilled) {
+        // Process normal drops
         if (isHostile) {
             processDrops(event, LootConfig.getNormalHostileDrops(), player, playerKilled);
         }
-        
-        // Process event-specific drops for all active events
-        for (String eventName : LootConfig.getActiveEvents()) {
-            String matchingEventName = null;
-            for (String key : LootConfig.getEventDrops().keySet()) {
-                if (key.equalsIgnoreCase(eventName)) {
-                    matchingEventName = key;
-                    break;
-                }
-            }
-            
-            if (matchingEventName != null) {
-                List<EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(matchingEventName);
-                if (eventDropList != null) {
-                    processEntityDrops(event, entityIdStr, eventDropList, player, playerKilled);
-                }
-                
-                if (isHostile) {
-                    processDrops(event, LootConfig.getEventHostileDrops(matchingEventName), player, playerKilled);
-                }
-            }
-        }
 
-        // Log final drop information if debug is enabled
-        if (debugLoggingEnabled && !event.getDrops().isEmpty()) {
-            logDebug("Final drops for {}: ", entityIdStr);
-            event.getDrops().forEach(drop -> 
-                logDebug("- {} x{}", 
-                    ForgeRegistries.ITEMS.getKey(drop.getItem().getItem()), 
-                    drop.getItem().getCount())
-            );
+        // Process entity-specific drops
+        processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player, playerKilled);
+
+        // Process event-specific drops
+        for (String eventName : LootConfig.getActiveEvents()) {
+            String matchingEventName = findMatchingEventName(eventName);
+            if (matchingEventName != null) {
+                processEventDrops(event, entityIdStr, matchingEventName, player, playerKilled, isHostile);
+            }
         }
     }
-    
+
+    /**
+     * Processes event-specific drops.
+     */
+    private static void processEventDrops(LivingDropsEvent event, String entityIdStr, String eventName,
+                                          Player player, boolean playerKilled, boolean isHostile) {
+        List<EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(eventName);
+        if (eventDropList != null) {
+            processEntityDrops(event, entityIdStr, eventDropList, player, playerKilled);
+        }
+
+        if (isHostile) {
+            processDrops(event, LootConfig.getEventHostileDrops(eventName), player, playerKilled);
+        }
+    }
+
+    /**
+     * Finds a matching event name (case-insensitive).
+     */
+    private static String findMatchingEventName(String eventName) {
+        for (String key : LootConfig.getEventDrops().keySet()) {
+            if (key.equalsIgnoreCase(eventName)) {
+                return key;
+            }
+        }
+        return null;
+    }
+
     /**
      * Processes entity-specific drops for a given entity.
      */
-    private static void processEntityDrops(LivingDropsEvent event, String entityIdStr, 
-        List<EntityDropEntry> dropsList, Player player, boolean playerKilled) {
+    private static void processEntityDrops(LivingDropsEvent event, String entityIdStr,
+                                           List<EntityDropEntry> dropsList, Player player, boolean playerKilled) {
         for (EntityDropEntry drop : dropsList) {
             if (drop.getEntityId().equals(entityIdStr)) {
                 processDropEntry(event, drop, player, playerKilled);
             }
         }
     }
-    
+
     /**
      * Processes a list of custom drops.
      */
-    private static void processDrops(LivingDropsEvent event, List<CustomDropEntry> drops, 
-        Player player, boolean playerKilled) {
+    private static void processDrops(LivingDropsEvent event, List<CustomDropEntry> drops,
+                                     Player player, boolean playerKilled) {
         for (CustomDropEntry drop : drops) {
             processDropEntry(event, drop, player, playerKilled);
         }
     }
-    
+
     /**
      * Processes a single drop entry.
      */
-    private static void processDropEntry(LivingDropsEvent event, CustomDropEntry drop, 
-            Player player, boolean playerKilled) {
+    private static void processDropEntry(LivingDropsEvent event, CustomDropEntry drop,
+                                         Player player, boolean playerKilled) {
         try {
-            // Step 1: Check player kill requirement FIRST
-            if (drop.isRequirePlayerKill()) {
-                if (!playerKilled) {
-                    return; // STOP - requirement not met
-                }
+            // Check all requirements
+            if (!checkDropRequirements(drop, player, playerKilled)) {
+                return;
             }
-            
-            // Step 2: If we need player-specific checks, ensure player exists
-            boolean needsPlayer = drop.hasRequiredDimension() || 
-                                 drop.hasRequiredAdvancement() || 
-                                 drop.hasRequiredEffect() || 
-                                 drop.hasRequiredEquipment() ||
-                                 drop.hasCommand();
-            
-            if (needsPlayer && player == null) {
-                return; // STOP - need player but don't have one
-            }
-            
-            // Step 3: Check dimension requirement
-            if (drop.hasRequiredDimension()) {
-                if (player == null) {
-                    return; // STOP - need dimension check but no player
-                }
-                
-                String playerDim = player.level().dimension().location().toString();
-                String requiredDim = drop.getRequiredDimension();
-                
-                if (!playerDim.equals(requiredDim)) {
-                    return; // STOP - wrong dimension
-                }
-            }
-            
-            // Step 4: Check advancement requirement
-            if (drop.hasRequiredAdvancement()) {
-                if (!(player instanceof ServerPlayer)) {
-                    return; // STOP - need ServerPlayer for advancement check
-                }
-                
-                ServerPlayer serverPlayer = (ServerPlayer) player;
-                ResourceLocation advancementId = new ResourceLocation(drop.getRequiredAdvancement());
-                
-                MinecraftServer server = serverPlayer.getServer();
-                if (server == null) {
-                    return; // STOP - no server
-                }
-                
-                Advancement advancement = server.getAdvancements().getAdvancement(advancementId);
-                if (advancement == null) {
-                    return; // STOP - advancement doesn't exist
-                }
-                
-                boolean hasAdvancement = serverPlayer.getAdvancements().getOrStartProgress(advancement).isDone();
-                if (!hasAdvancement) {
-                    return; // STOP - player doesn't have advancement
-                }
-            }
-            
-            // Step 5: Check effect requirement
-            if (drop.hasRequiredEffect()) {
-                if (player == null) {
-                    return; // STOP - need player for effect check
-                }
-                
-                ResourceLocation effectId = new ResourceLocation(drop.getRequiredEffect());
-                MobEffect effect = ForgeRegistries.MOB_EFFECTS.getValue(effectId);
-                
-                if (effect == null || !player.hasEffect(effect)) {
-                    return; // STOP - player doesn't have required effect
-                }
-            }
-            
-            // Step 6: Check equipment requirement
-            if (drop.hasRequiredEquipment()) {
-                if (player == null) {
-                    return; // STOP - need player for equipment check
-                }
-                
-                ResourceLocation equipmentId = new ResourceLocation(drop.getRequiredEquipment());
-                ItemStack mainHand = player.getMainHandItem();
-                ItemStack offHand = player.getOffhandItem();
-                
-                boolean hasEquipment = ForgeRegistries.ITEMS.getKey(mainHand.getItem()).equals(equipmentId) ||
-                                      ForgeRegistries.ITEMS.getKey(offHand.getItem()).equals(equipmentId);
-                
-                if (!hasEquipment) {
-                    return; // STOP - player doesn't have required equipment
-                }
-            }
-            
-            // ALL REQUIREMENTS PASSED - Now we can execute command and handle drops
-            
+
             // Execute command if present
-            if (drop.hasCommand() && player instanceof ServerPlayer) {
-                float commandChance = drop.getCommandChance();
-                if (commandChance > 0) {
-                    float commandRoll = RANDOM.nextFloat() * 100;
-                    if (commandRoll <= commandChance) {
-                        executeCommand(drop.getCommand(), (ServerPlayer) player, event.getEntity());
-                    }
-                }
-            }
-            
+            executeDropCommand(drop, player, event.getEntity());
+
             // Handle item drop
-            float dropChance = drop.getDropChance();
-            if (LootConfig.isDropChanceEventActive() && playerKilled) {
-                dropChance *= 2.0f;
-            }
-            
-            float dropRoll = RANDOM.nextFloat() * 100;
-            if (dropRoll <= dropChance) {
-                ResourceLocation itemId = new ResourceLocation(drop.getItemId());
-                Item item = ForgeRegistries.ITEMS.getValue(itemId);
-                
-                if (item != null) {
-                    int amount = drop.getMinAmount();
-                    if (drop.getMaxAmount() > drop.getMinAmount()) {
-                        amount += RANDOM.nextInt(drop.getMaxAmount() - drop.getMinAmount() + 1);
-                    }
-                    
-                    if (LootConfig.isDoubleDropsActive() && playerKilled) {
-                        amount *= 2;
-                    }
-                    
-                    ItemStack stack = new ItemStack(item, amount);
-                    
-                    if (drop.hasNbtData()) {
-                        try {
-                            CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
-                            stack.setTag(nbt);
-                        } catch (CommandSyntaxException e) {
-                            LOGGER.error("Invalid NBT format for {}: {}", drop.getItemId(), e.getMessage());
-                        }
-                    }
-                    
-                    event.getEntity().spawnAtLocation(stack);
-                }
-            }
-            
+            handleItemDrop(event, drop, player);
+
         } catch (Exception e) {
             LOGGER.error("Error processing drop {}: {}", drop.getItemId(), e.getMessage());
         }
     }
-    
-    private static boolean hasAdvancement(ServerPlayer player, ResourceLocation advancement) {
-        MinecraftServer server = player.getServer();
-        if (server == null) return false;
-        
-        Advancement adv = server.getAdvancements().getAdvancement(advancement);
-        if (adv == null) return false;
-        
-        return player.getAdvancements().getOrStartProgress(adv).isDone();
+
+    /**
+     * Executes the drop command if present and conditions are met.
+     */
+    private static void executeDropCommand(CustomDropEntry drop, Player player, LivingEntity entity) {
+        if (drop.hasCommand() && player instanceof ServerPlayer) {
+            float commandChance = drop.getCommandChance();
+            if (commandChance > 0 && RANDOM.nextFloat() * 100 <= commandChance) {
+                executeCommand(drop.getCommand(), (ServerPlayer) player, entity);
+            }
+        }
     }
-    
-    private static boolean hasEffect(Player player, String effectId) {
-        ResourceLocation effectResource = new ResourceLocation(effectId);
-        MobEffect effect = ForgeRegistries.MOB_EFFECTS.getValue(effectResource);
-        if (effect == null) return false;
-        
-        return player.hasEffect(effect);
+
+    /**
+     * Handles the item drop logic.
+     */
+    private static void handleItemDrop(LivingDropsEvent event, CustomDropEntry drop, Player player) {
+        float dropChance = drop.getDropChance();
+        if (LootConfig.isDropChanceEventActive() && event.getSource().getEntity() instanceof Player) {
+            dropChance *= 2.0f;
+        }
+
+        if (RANDOM.nextFloat() * 100 <= dropChance) {
+            int amount = calculateAmount(drop.getMinAmount(), drop.getMaxAmount());
+            ItemStack stack = createItemStack(drop, amount);
+
+            if (stack != null) {
+                event.getEntity().spawnAtLocation(stack);
+                logDebug("Dropped {} x{} from {}", drop.getItemId(), amount,
+                        ForgeRegistries.ENTITY_TYPES.getKey(event.getEntity().getType()));
+
+                // Execute drop command if present
+                executeDropCommandOnDrop(drop, player, event.getEntity(), amount);
+            }
+        }
     }
-    
-    private static boolean hasEquipment(Player player, String itemId) {
-        ResourceLocation itemResource = new ResourceLocation(itemId);
-        ItemStack mainHand = player.getMainHandItem();
-        ItemStack offHand = player.getOffhandItem();
-        
-        return (ForgeRegistries.ITEMS.getKey(mainHand.getItem()).equals(itemResource) ||
-                ForgeRegistries.ITEMS.getKey(offHand.getItem()).equals(itemResource));
+
+    /**
+     * Executes the drop command when an item actually drops.
+     */
+    private static void executeDropCommandOnDrop(CustomDropEntry drop, Player player, LivingEntity entity, int amount) {
+        if (drop.hasDropCommand() && player instanceof ServerPlayer) {
+            float dropCommandChance = drop.getDropCommandChance();
+            if (dropCommandChance > 0 && RANDOM.nextFloat() * 100 <= dropCommandChance) {
+                executeDropCommand(drop.getDropCommand(), (ServerPlayer) player, entity, drop, amount);
+            }
+        }
     }
-    
-    private static void executeCommand(String command, ServerPlayer player, LivingEntity killedEntity) {
+
+    /**
+     * Calculates a random amount between min and max (inclusive).
+     */
+    private static int calculateAmount(int min, int max) {
+        if (max <= min) {
+            return min;
+        }
+        return min + RANDOM.nextInt(max - min + 1);
+    }
+
+    /**
+     * Creates an ItemStack from a drop entry.
+     */
+    private static ItemStack createItemStack(CustomDropEntry drop, int amount) {
+        try {
+            ResourceLocation itemId = new ResourceLocation(drop.getItemId());
+            Item item = ForgeRegistries.ITEMS.getValue(itemId);
+
+            if (item == null) {
+                LOGGER.warn("Unknown item: {}", drop.getItemId());
+                return null;
+            }
+
+            ItemStack stack = new ItemStack(item, amount);
+
+            // Apply NBT if present
+            if (drop.getNbtData() != null && !drop.getNbtData().isEmpty()) {
+                try {
+                    CompoundTag nbt = TagParser.parseTag(drop.getNbtData());
+                    stack.setTag(nbt);
+                } catch (CommandSyntaxException e) {
+                    LOGGER.error("Invalid NBT for item {}: {}", drop.getItemId(), e.getMessage());
+                }
+            }
+
+            return stack;
+        } catch (Exception e) {
+            LOGGER.error("Error creating item stack for {}: {}", drop.getItemId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Checks if all drop requirements are met.
+     */
+    private static boolean checkDropRequirements(CustomDropEntry drop, Player player, boolean playerKilled) {
+        // Check player kill requirement
+        if (drop.isRequirePlayerKill() && !playerKilled) {
+            return false;
+        }
+
+        // Check advancement requirement
+        if (drop.hasRequiredAdvancement()) {
+            if (!checkAdvancementRequirement(drop, player)) {
+                return false;
+            }
+        }
+
+        // Check effect requirement
+        if (drop.hasRequiredEffect()) {
+            if (!checkEffectRequirement(drop, player)) {
+                return false;
+            }
+        }
+
+        // Check equipment requirement
+        if (drop.hasRequiredEquipment()) {
+            if (!checkEquipmentRequirement(drop, player)) {
+                return false;
+            }
+        }
+
+        // Check dimension requirement
+        if (drop.hasRequiredDimension()) {
+            if (!checkDimensionRequirement(drop, player)) {
+                return false;
+            }
+        }
+
+        // Check biome requirement
+        if (drop.hasRequiredBiome()) {
+            if (!checkBiomeRequirement(drop, player)) {
+                return false;
+            }
+        }
+
+        // Check weather requirement
+        if (drop.hasRequiredWeather()) {
+            if (!checkWeatherRequirement(drop, player)) {
+                return false;
+            }
+        }
+
+        // Check time requirement
+        if (drop.hasRequiredTime()) {
+            if (!checkTimeRequirement(drop, player)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Checks if all drop requirements are met (overloaded for single player parameter).
+     */
+    private static boolean checkDropRequirements(CustomDropEntry drop, Player player) {
+        return checkDropRequirements(drop, player, true);
+    }
+
+    /**
+     * Checks if the player has the required advancement.
+     */
+    private static boolean checkAdvancementRequirement(CustomDropEntry drop, Player player) {
+        if (!(player instanceof ServerPlayer)) {
+            return false;
+        }
+
+        ServerPlayer serverPlayer = (ServerPlayer) player;
+        ResourceLocation advancementId = new ResourceLocation(drop.getRequiredAdvancement());
+        Advancement advancement = serverPlayer.server.getAdvancements().getAdvancement(advancementId);
+
+        return advancement != null && serverPlayer.getAdvancements().getOrStartProgress(advancement).isDone();
+    }
+
+    /**
+     * Checks if the player has the required effect.
+     */
+    private static boolean checkEffectRequirement(CustomDropEntry drop, Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        ResourceLocation effectId = new ResourceLocation(drop.getRequiredEffect());
+        Holder<MobEffect> effectHolder = ForgeRegistries.MOB_EFFECTS.getHolder(effectId).orElse(null);
+
+        return effectHolder != null && player.hasEffect(effectHolder.value());
+    }
+
+    /**
+     * Checks if the player has the required equipment.
+     */
+    private static boolean checkEquipmentRequirement(CustomDropEntry drop, Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        ResourceLocation itemId = new ResourceLocation(drop.getRequiredEquipment());
+        Item requiredItem = ForgeRegistries.ITEMS.getValue(itemId);
+
+        if (requiredItem == null) {
+            return false;
+        }
+
+        // Check all equipment slots
+        for (ItemStack stack : player.getArmorSlots()) {
+            if (stack.getItem() == requiredItem) {
+                return true;
+            }
+        }
+
+        // Check main hand and offhand
+        return player.getMainHandItem().getItem() == requiredItem ||
+                player.getOffhandItem().getItem() == requiredItem;
+    }
+
+    /**
+     * Checks if the player is in the required dimension.
+     */
+    private static boolean checkDimensionRequirement(CustomDropEntry drop, Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        ResourceLocation dimensionId = new ResourceLocation(drop.getRequiredDimension());
+        ResourceLocation playerDimension = player.level().dimension().location();
+
+        return dimensionId.equals(playerDimension);
+    }
+
+    /**
+     * Checks if the player is in the required biome.
+     */
+    private static boolean checkBiomeRequirement(CustomDropEntry drop, Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        ResourceLocation biomeId = new ResourceLocation(drop.getRequiredBiome());
+        Holder<Biome> playerBiome = player.level().getBiome(player.blockPosition());
+
+        return playerBiome.is(biomeId);
+    }
+
+    /**
+     * Checks if the weather requirement is met.
+     */
+    private static boolean checkWeatherRequirement(CustomDropEntry drop, Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        String requiredWeather = drop.getRequiredWeather().toLowerCase();
+        boolean isRaining = player.level().isRaining();
+        boolean isThundering = player.level().isThundering();
+
+        switch (requiredWeather) {
+            case "clear":
+                return !isRaining && !isThundering;
+            case "rain":
+                return isRaining && !isThundering;
+            case "thunder":
+                return isThundering;
+            default:
+                return true; // Invalid weather requirement, allow drop
+        }
+    }
+
+    /**
+     * Checks if the time requirement is met.
+     */
+    private static boolean checkTimeRequirement(CustomDropEntry drop, Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        String requiredTime = drop.getRequiredTime().toLowerCase();
+        long dayTime = player.level().getDayTime() % 24000;
+
+        switch (requiredTime) {
+            case "day":
+                return dayTime >= 1000 && dayTime < 13000;
+            case "night":
+                return dayTime >= 13000 || dayTime < 1000;
+            case "dawn":
+                return dayTime >= 23000 || dayTime < 1000;
+            case "dusk":
+                return dayTime >= 12000 && dayTime < 14000;
+            default:
+                return true; // Invalid time requirement, allow drop
+        }
+    }
+
+    /**
+     * Executes a command with player and entity context.
+     */
+    private static void executeCommand(String command, ServerPlayer player, LivingEntity entity) {
+        executeDropCommand(command, player, entity, null, 1);
+    }
+
+    /**
+     * Executes a drop command with full context including item and amount.
+     */
+    private static void executeDropCommand(String command, ServerPlayer player, LivingEntity entity, CustomDropEntry drop, int amount) {
         try {
             MinecraftServer server = player.getServer();
             if (server == null) {
-                LOGGER.error("Failed to execute command: server is null");
                 return;
             }
-            
-            ServerLevel level = (ServerLevel) player.level();
-            String[] commands = command.replace("\\n", "\n").split("\n");
-            
-            for (String singleCommand : commands) {
-                if (singleCommand.trim().isEmpty()) {
-                    continue;
-                }
-                
-                String processedCommand = singleCommand
-                    .replace("{player}", player.getName().getString())
-                    .replace("{player_x}", String.format("%.2f", player.getX()))
-                    .replace("{player_y}", String.format("%.2f", player.getY()))
-                    .replace("{player_z}", String.format("%.2f", player.getZ()))
-                    .replace("{entity}", killedEntity.getName().getString())
-                    .replace("{entity_id}", ForgeRegistries.ENTITY_TYPES.getKey(killedEntity.getType()).toString())
-                    .replace("{entity_x}", String.format("%.2f", killedEntity.getX()))
-                    .replace("{entity_y}", String.format("%.2f", killedEntity.getY()))
-                    .replace("{entity_z}", String.format("%.2f", killedEntity.getZ()));
-                
-                CommandSourceStack source = server.createCommandSourceStack()
-                    .withPosition(Vec3.atCenterOf(killedEntity.blockPosition()))
-                    .withRotation(Vec2.ZERO)
-                    .withLevel(level)
-                    .withPermission(4)
-                    .withEntity(player);
-                
-                try {
-                    server.getCommands().performPrefixedCommand(source, processedCommand);
-                } catch (Exception e) {
-                    LOGGER.error("Error executing command '{}': {}", processedCommand, e.getMessage());
-                }
+
+            ServerLevel level = (ServerLevel) entity.level();
+            Vec3 entityPos = entity.position();
+            Vec2 entityRotation = new Vec2(entity.getXRot(), entity.getYRot());
+
+            CommandSourceStack commandSource = new CommandSourceStack(
+                    server,
+                    entityPos,
+                    entityRotation,
+                    level,
+                    4,
+                    entity.getName().getString(),
+                    entity.getDisplayName(),
+                    server,
+                    entity
+            );
+
+            // Replace placeholders
+            String entityName = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
+            String itemName = "unknown_item";
+            if (drop != null && drop.getItemId() != null) {
+                // Extract just the item name from the full ID (e.g., "minecraft:diamond" -> "diamond")
+                String fullId = drop.getItemId();
+                itemName = fullId.contains(":") ? fullId.substring(fullId.lastIndexOf(":") + 1) : fullId;
             }
+
+            String processedCommand = command
+                    .replace("%player%", player.getName().getString())
+                    .replace("@killer", player.getName().getString())
+                    .replace("%entity%", entityName)
+                    .replace("@entity", entityName)
+                    .replace("@item", itemName)
+                    .replace("%item%", itemName)
+                    .replace("@amount", String.valueOf(amount))
+                    .replace("%amount%", String.valueOf(amount))
+                    .replace("%x%", String.valueOf((int) entity.getX()))
+                    .replace("%y%", String.valueOf((int) entity.getY()))
+                    .replace("%z%", String.valueOf((int) entity.getZ()));
+
+            server.getCommands().performPrefixedCommand(commandSource, processedCommand);
+            logDebug("Executed command: {}", processedCommand);
+
         } catch (Exception e) {
-            LOGGER.error("Failed to execute command: {} - {}", command, e.getMessage(), e);
+            LOGGER.error("Failed to execute command '{}': {}", command, e.getMessage());
         }
     }
 }

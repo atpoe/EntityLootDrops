@@ -38,7 +38,7 @@ public class EntityLootDrops {
      * This should match the modid in the mods.toml file.
      */
     public static final String MOD_ID = "entitylootdrops";
-    
+
     /**
      * Logger for this class.
      * Used to output information, warnings, and errors to the console and log file.
@@ -62,34 +62,34 @@ public class EntityLootDrops {
     public EntityLootDrops() {
         // Register this class to receive Forge events
         MinecraftForge.EVENT_BUS.register(this);
-        
+
         // Register the loot event handler to receive entity drop events
         MinecraftForge.EVENT_BUS.register(LootEventHandler.class);
-        
+
         // Register the block event handler to receive block-related events
         MinecraftForge.EVENT_BUS.register(BlockEventHandler.class);
-        
+
         // Register the recipe event handler to receive crafting events
         MinecraftForge.EVENT_BUS.register(RecipeEventHandler.class);
-        
+
         // Register the fishing event handler to receive fishing-related events
         MinecraftForge.EVENT_BUS.register(FishingEventHandler.class);
         LOGGER.info("Registered FishingEventHandler");
-        
+
         // Register the setup event
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
-        
+
         LOGGER.info("Entity Loot Drops mod initializing...");
-        
+
         // Load the initial configuration
         // This creates default files if they don't exist
         LootConfig.loadConfig(); // Uses the refactored LootConfig
         BlockConfig.loadConfig(); // Uses the refactored BlockConfig
         RecipeConfig.loadConfig(); // Uses the new simplified RecipeConfig
-        
+
         // Initialize recipe registration manager
         recipeRegistrationManager = new RecipeRegistrationManager(RecipeConfig.getConfigManager());
-        
+
         // Load fishing config
         try {
             FishingConfig.loadConfig(new File("config"));
@@ -97,7 +97,7 @@ public class EntityLootDrops {
         } catch (Exception e) {
             LOGGER.error("Failed to load FishingConfig: {}", e.getMessage());
         }
-        
+
         // Create all README files if ReadmeManager exists
         try {
             Class<?> readmeManagerClass = Class.forName("net.poe.entitylootdrops.ReadmeManager");
@@ -108,9 +108,9 @@ public class EntityLootDrops {
         } catch (Exception e) {
             LOGGER.warn("Failed to create README files: {}", e.getMessage());
         }
-        
+
         LOGGER.info("Initial config load complete");
-        
+
         // Register config screen on client side only
         ModConfig.setConfigLoaded(true);
         if (FMLEnvironment.dist == Dist.CLIENT) {
@@ -122,11 +122,11 @@ public class EntityLootDrops {
             }
         }
     }
-    
+
     /**
      * Setup method called during mod initialization.
      * This is called after configs are loaded but before the game starts.
-     * 
+     *
      * @param event The FMLCommonSetupEvent
      */
     private void setup(final FMLCommonSetupEvent event) {
@@ -138,19 +138,19 @@ public class EntityLootDrops {
      * Event handler for server starting.
      * This is called when a Minecraft server (including integrated server) is starting.
      * Reloads the configuration to ensure it's up to date.
-     * 
+     *
      * @param event The ServerStartingEvent
      */
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         LOGGER.info("Server starting - reloading configurations...");
-        
+
         // Reload configuration when the server starts
         // This ensures any changes made to the config files are applied
         LootConfig.loadConfig();
         BlockConfig.loadConfig();
         RecipeConfig.loadConfig();
-        
+
         // Reload fishing config
         try {
             FishingConfig.loadConfig(new File("config"));
@@ -171,7 +171,7 @@ public class EntityLootDrops {
         } catch (Exception e) {
             LOGGER.error("Failed to load block regeneration data: {}", e.getMessage());
         }
-        
+
         // Log debug information about the loaded configuration
         LOGGER.info("Loaded {} normal drops", LootConfig.getNormalDrops().size());
         LOGGER.info("Loaded {} hostile drops", LootConfig.getNormalHostileDrops().size());
@@ -181,68 +181,192 @@ public class EntityLootDrops {
         LOGGER.info("Active block events: {}", BlockConfig.getActiveBlockEvents());
         LOGGER.info("Loaded {} custom recipes", RecipeConfig.getAllRecipes().size());
         LOGGER.info("Loaded {} enabled custom recipes", RecipeConfig.getConfigManager().getEnabledRecipeCount());
-        
+
         // Log fishing drops
         LOGGER.info("Loaded {} fishing drops", FishingConfig.getFishingDrops().size());
         LOGGER.info("Loaded {} global fishing rewards", FishingConfig.getGlobalFishingRewards().size());
-        
+
         // Log block regeneration status
         int currentRegenerating = BlockRegenerationManager.getRegenerationCount();
         if (currentRegenerating > 0) {
             LOGGER.info("Currently tracking {} regenerating blocks", currentRegenerating);
         }
     }
-    
+
     /**
      * Event handler for server stopping.
      * This is called when a Minecraft server (including integrated server) is stopping.
-     * Saves the current event states and regeneration data to ensure they persist through restarts.
-     * 
+     * Saves any persistent data that needs to be preserved.
+     *
      * @param event The ServerStoppingEvent
      */
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
-        LOGGER.info("Server stopping - saving configuration states...");
-        
-        // Save the current event states when the server stops
-        // This ensures active events persist through server restarts
-        try {
-            LootConfig.saveActiveEventsState();
-            LOGGER.debug("Saved loot drop event states");
-        } catch (Exception e) {
-            LOGGER.error("Failed to save loot drop event states: {}", e.getMessage());
-        }
-        
-        try {
-            BlockConfig.saveActiveEventsState();
-            LOGGER.debug("Saved block drop event states");
-        } catch (Exception e) {
-            LOGGER.error("Failed to save block drop event states: {}", e.getMessage());
-        }
-        
+        LOGGER.info("Server stopping - saving persistent data...");
+
         // Save block regeneration data to disk
         try {
+            BlockRegenerationManager.saveRegenerationData();
             int regeneratingCount = BlockRegenerationManager.getRegenerationCount();
             if (regeneratingCount > 0) {
-                LOGGER.info("Saving {} regenerating blocks to disk", regeneratingCount);
-                BlockRegenerationManager.saveRegenerationData();
-                LOGGER.info("Successfully saved regenerating blocks data");
+                LOGGER.info("Saved {} regenerating blocks to disk", regeneratingCount);
             } else {
-                LOGGER.debug("No regenerating blocks to save");
-                // Still save to clear any old data
-                BlockRegenerationManager.saveRegenerationData();
+                LOGGER.info("No regenerating blocks to save");
             }
         } catch (Exception e) {
             LOGGER.error("Failed to save block regeneration data: {}", e.getMessage());
         }
-        
-        LOGGER.info("Configuration states and regeneration data saved successfully");
+
+        LOGGER.info("Server shutdown complete");
     }
 
     /**
-     * Get the recipe registration manager instance
+     * Gets the recipe registration manager instance
      */
     public static RecipeRegistrationManager getRecipeRegistrationManager() {
         return recipeRegistrationManager;
+    }
+
+    /**
+     * Forces regeneration of all example configuration files.
+     * This will recreate all example files even if they've been modified.
+     * Call this method if you want to reset all examples to defaults.
+     */
+    public static void forceRegenerateExamples() {
+        LOGGER.info("Force regenerating all example configuration files...");
+
+        try {
+            // Delete all tracker files to force regeneration
+            java.nio.file.Path configDir = java.nio.file.Paths.get("config/EntityLootDrops");
+            if (java.nio.file.Files.exists(configDir)) {
+                java.nio.file.Files.walk(configDir)
+                        .filter(path -> path.getFileName().toString().endsWith(".tracker"))
+                        .forEach(trackerFile -> {
+                            try {
+                                java.nio.file.Files.deleteIfExists(trackerFile);
+                                LOGGER.debug("Deleted tracker file: {}", trackerFile);
+                            } catch (Exception e) {
+                                LOGGER.warn("Failed to delete tracker file {}: {}", trackerFile, e.getMessage());
+                            }
+                        });
+            }
+
+            // Reload configuration to trigger regeneration
+            LootConfig.loadConfig();
+            LOGGER.info("Successfully regenerated all example configuration files");
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to force regenerate examples: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Forces regeneration of all example configuration files by deleting main template files.
+     * This is a more aggressive approach that will recreate both main templates and examples.
+     * Use this if you want to completely reset the configuration structure.
+     */
+    public static void forceRegenerateAllConfigs() {
+        LOGGER.info("Force regenerating ALL configuration files (including main templates)...");
+
+        try {
+            java.nio.file.Path configDir = java.nio.file.Paths.get("config/EntityLootDrops");
+            if (java.nio.file.Files.exists(configDir)) {
+                // Delete all tracker files
+                java.nio.file.Files.walk(configDir)
+                        .filter(path -> path.getFileName().toString().endsWith(".tracker"))
+                        .forEach(trackerFile -> {
+                            try {
+                                java.nio.file.Files.deleteIfExists(trackerFile);
+                                LOGGER.debug("Deleted tracker file: {}", trackerFile);
+                            } catch (Exception e) {
+                                LOGGER.warn("Failed to delete tracker file {}: {}", trackerFile, e.getMessage());
+                            }
+                        });
+
+                // Delete main template files to force complete regeneration
+                java.nio.file.Files.walk(configDir)
+                        .filter(path -> path.getFileName().toString().equals("Global_Hostile_Drops.json"))
+                        .forEach(templateFile -> {
+                            try {
+                                java.nio.file.Files.deleteIfExists(templateFile);
+                                LOGGER.debug("Deleted main template file: {}", templateFile);
+                            } catch (Exception e) {
+                                LOGGER.warn("Failed to delete template file {}: {}", templateFile, e.getMessage());
+                            }
+                        });
+            }
+
+            // Reload configuration to trigger complete regeneration
+            LootConfig.loadConfig();
+            LOGGER.info("Successfully regenerated ALL configuration files");
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to force regenerate all configs: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Checks if example files have been modified by users.
+     * This can be useful for debugging or informational purposes.
+     *
+     * @return A map of file paths to their modification status
+     */
+    public static java.util.Map<String, Boolean> checkExampleModificationStatus() {
+        java.util.Map<String, Boolean> modificationStatus = new java.util.HashMap<>();
+
+        try {
+            java.nio.file.Path configDir = java.nio.file.Paths.get("config/EntityLootDrops");
+            if (java.nio.file.Files.exists(configDir)) {
+                java.nio.file.Files.walk(configDir)
+                        .filter(path -> path.getFileName().toString().endsWith("_Example.json"))
+                        .forEach(exampleFile -> {
+                            try {
+                                String fileName = exampleFile.toString();
+                                boolean isModified = checkIfFileModified(exampleFile);
+                                modificationStatus.put(fileName, isModified);
+
+                                if (isModified) {
+                                    LOGGER.debug("Example file {} has been modified", fileName);
+                                }
+                            } catch (Exception e) {
+                                LOGGER.warn("Failed to check modification status for {}: {}", exampleFile, e.getMessage());
+                            }
+                        });
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to check example modification status: {}", e.getMessage());
+        }
+
+        return modificationStatus;
+    }
+
+    /**
+     * Helper method to check if a specific file has been modified.
+     */
+    private static boolean checkIfFileModified(java.nio.file.Path exampleFile) {
+        try {
+            String fileName = exampleFile.getFileName().toString();
+            String trackerName = "." + fileName + ".tracker";
+            java.nio.file.Path trackerFile = exampleFile.getParent().resolve(trackerName);
+
+            if (!java.nio.file.Files.exists(trackerFile)) {
+                return false; // No tracker means it hasn't been created yet
+            }
+
+            // Read the stored hash
+            String storedHash = new String(java.nio.file.Files.readAllBytes(trackerFile)).trim();
+
+            // Calculate current hash
+            long lastModified = java.nio.file.Files.getLastModifiedTime(exampleFile).toMillis();
+            long fileSize = java.nio.file.Files.size(exampleFile);
+            String currentHash = String.valueOf(lastModified + fileSize);
+
+            // If hashes don't match, file has been modified
+            return !storedHash.equals(currentHash);
+
+        } catch (Exception e) {
+            LOGGER.debug("Failed to check modification status for {}: {}", exampleFile, e.getMessage());
+            return false; // Assume not modified if we can't check
+        }
     }
 }
