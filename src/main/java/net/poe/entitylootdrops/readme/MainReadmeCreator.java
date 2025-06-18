@@ -77,6 +77,37 @@ public class MainReadmeCreator {
             readme.append("  /recipes - Recipe commands\n");
             readme.append("  /fishingdrops - Fishing drop commands\n\n");
 
+            readme.append("UNDERSTANDING 'GLOBAL' FILES:\n");
+            readme.append("============================\n");
+            readme.append("Files with 'Global' in the name apply to ALL entities/blocks/fishing of that type:\n");
+            readme.append("- Global_Hostile_Drops.json: ALL hostile mobs\n");
+            readme.append("- Global_Block_Drops.json: ALL blocks\n");
+            readme.append("- Global_Fishing_Rewards.json: ALL fishing attempts\n\n");
+
+            readme.append("More specific files (like individual mob files) take priority over global files.\n\n");
+
+            readme.append("IMPORTANT - HOW TO DISABLE DROPS:\n");
+            readme.append("=================================\n");
+            readme.append("Many users ask how to disable drops without deleting files.\n");
+            readme.append("Here are the methods that work for ALL drop types:\n\n");
+
+            readme.append("Method 1 - Empty Array (Disables ALL drops in a file):\n");
+            readme.append("Replace the entire file content with: []\n\n");
+
+            readme.append("Method 2 - Set Drop Chance/Chance to 0 (and Command Chance):\n");
+            readme.append("- For entity drops: Set \"dropChance\": 0 AND \"commandChance\": 0\n");
+            readme.append("- For fishing drops: Set \"chance\": 0\n");
+            readme.append("- For block drops: Set \"dropChance\": 0 AND \"commandChance\": 0\n");
+            readme.append("(This disables both item drops AND command execution)\n\n");
+
+            readme.append("Method 3 - Set Amounts to 0 (Alternative):\n");
+            readme.append("Set \"minAmount\": 0 and \"maxAmount\": 0\n\n");
+
+            readme.append("WHY NOT DELETE FILES?\n");
+            readme.append("- Main config files (like Global_Hostile_Drops.json) will regenerate\n");
+            readme.append("- You'll lose your custom configurations\n");
+            readme.append("- Example files are safe to delete and will regenerate with updates\n\n");
+
             readme.append("Configuration Tips:\n");
             readme.append("------------------\n");
             readme.append("1. Start with Global_Hostile_Drops.json for drops that apply to all hostile mobs\n");
@@ -84,7 +115,8 @@ public class MainReadmeCreator {
             readme.append("3. Create custom .json files to organize your drops by theme\n");
             readme.append("4. Use events for seasonal or temporary drops\n");
             readme.append("5. Test with debug logging enabled: /lootdrops debug true\n");
-            readme.append("6. Use /lootdrops reload to apply changes without restarting\n\n");
+            readme.append("6. Use /lootdrops reload to apply changes without restarting\n");
+            readme.append("7. To disable drops: Use [] or set chances to 0 - DON'T delete main files!\n\n");
 
             readme.append("Each directory contains its own README file with detailed instructions.\n");
             

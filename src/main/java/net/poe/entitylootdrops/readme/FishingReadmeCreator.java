@@ -118,7 +118,46 @@ public class FishingReadmeCreator {
             readme.append("  }\n");
             readme.append("]\n");
             readme.append("```\n\n");
-            
+
+            readme.append("UNDERSTANDING 'GLOBAL' FILES:\n");
+            readme.append("============================\n");
+            readme.append("Files with 'Global' in the name apply to ALL fishing scenarios unless\n");
+            readme.append("you have more specific configurations in other folders.\n\n");
+
+            readme.append("HOW TO DISABLE FISHING DROPS:\n");
+            readme.append("=============================\n");
+            readme.append("To disable fishing drops without deleting files:\n\n");
+
+            readme.append("Method 1 - Empty Array (Disables ALL drops in file):\n");
+            readme.append("Replace the entire file content with: []\n\n");
+
+            readme.append("Method 2 - Set Chance to 0 (Disables specific drops):\n");
+            readme.append("Set \"chance\": 0 for drops you want to disable\n");
+            readme.append("(Note: Fishing drops don't use commandChance, commands are part of the drop configuration)\n\n");
+
+            readme.append("Example - Completely Disabled File:\n");
+            readme.append("```json\n");
+            readme.append("[]\n");
+            readme.append("```\n\n");
+
+            readme.append("Example - Selectively Disabled Drops:\n");
+            readme.append("```json\n");
+            readme.append("[\n");
+            readme.append("  {\n");
+            readme.append("    \"name\": \"rare_catch\",\n");
+            readme.append("    \"chance\": 0,\n");
+            readme.append("    \"rewards\": [\n");
+            readme.append("      {\n");
+            readme.append("        \"item\": \"minecraft:diamond\",\n");
+            readme.append("        \"count\": 1,\n");
+            readme.append("        \"chance\": 1.0\n");
+            readme.append("      }\n");
+            readme.append("    ]\n");
+            readme.append("  }\n");
+            readme.append("]\n");
+            readme.append("```\n");
+            readme.append("(This disables the entire drop group by setting main chance to 0)\n\n");
+
             readme.append("Tips:\n");
             readme.append("----\n");
             readme.append("1. Use low chance values (0.01-0.1) for rare drops to maintain balance\n");

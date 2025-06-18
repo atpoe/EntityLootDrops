@@ -105,6 +105,64 @@ public class LootDropsReadmeCreator {
             readme.append("  }\n");
             readme.append("]\n\n");
 
+            readme.append("UNDERSTANDING 'GLOBAL' FILES:\n");
+            readme.append("============================\n");
+            readme.append("Files with 'Global' in the name (like Global_Hostile_Drops.json) apply to ALL\n");
+            readme.append("entities of that type, unless you have a more specific configuration.\n\n");
+
+            readme.append("For example:\n");
+            readme.append("- Global_Hostile_Drops.json: Affects ALL hostile mobs (zombies, skeletons, etc.)\n");
+            readme.append("- Mobs/zombie.json: Only affects zombies specifically\n");
+            readme.append("- Mobs/skeleton.json: Only affects skeletons specifically\n\n");
+
+            readme.append("If you have both a global file and a specific mob file, the specific\n");
+            readme.append("mob file takes priority for that entity type.\n\n");
+
+            readme.append("HOW TO DISABLE DROPS WITHOUT DELETING FILES:\n");
+            readme.append("==========================================\n");
+            readme.append("IMPORTANT: Don't delete Global_Hostile_Drops.json as it will regenerate!\n");
+            readme.append("Instead, use these methods to disable drops:\n\n");
+
+            readme.append("Method 1 - Empty Array (Disables ALL drops in file):\n");
+            readme.append("Replace the entire file content with: []\n\n");
+
+            readme.append("Method 2 - Set Drop Chance and Command Chance to 0:\n");
+            readme.append("Set \"dropChance\": 0 AND \"commandChance\": 0 for drops you want to disable\n");
+            readme.append("(This disables both item drops AND command execution)\n\n");
+
+            readme.append("Method 3 - Set Amounts to 0 (Alternative method):\n");
+            readme.append("Set \"minAmount\": 0 and \"maxAmount\": 0\n\n");
+
+            readme.append("Example - Completely Disabled File:\n");
+            readme.append("```json\n");
+            readme.append("[]\n");
+            readme.append("```\n\n");
+
+            readme.append("Example - Selectively Disabled Drops:\n");
+            readme.append("```json\n");
+            readme.append("[\n");
+            readme.append("  {\n");
+            readme.append("    \"itemId\": \"minecraft:diamond\",\n");
+            readme.append("    \"dropChance\": 0,\n");
+            readme.append("    \"commandChance\": 0,\n");
+            readme.append("    \"minAmount\": 1,\n");
+            readme.append("    \"maxAmount\": 1,\n");
+            readme.append("    \"requirePlayerKill\": true,\n");
+            readme.append("    \"command\": \"say Rare drop!\"\n");
+            readme.append("  },\n");
+            readme.append("  {\n");
+            readme.append("    \"itemId\": \"minecraft:emerald\",\n");
+            readme.append("    \"dropChance\": 5.0,\n");
+            readme.append("    \"commandChance\": 10.0,\n");
+            readme.append("    \"minAmount\": 1,\n");
+            readme.append("    \"maxAmount\": 2,\n");
+            readme.append("    \"requirePlayerKill\": true,\n");
+            readme.append("    \"command\": \"say Emerald found!\"\n");
+            readme.append("  }\n");
+            readme.append("]\n");
+            readme.append("```\n");
+            readme.append("(Diamond drops AND commands are disabled, but emerald drops remain active)\n\n");
+
             readme.append("Tips:\n");
             readme.append("----\n");
             readme.append("- Use Global_Hostile_Drops.json for drops that apply to all hostile mobs\n");
@@ -113,6 +171,7 @@ public class LootDropsReadmeCreator {
             readme.append("- Event drops only activate when the event is enabled\n");
             readme.append("- Delete example files to regenerate them with updates\n");
             readme.append("- Use /lootdrops reload to apply changes without restarting\n");
+            readme.append("- To disable drops, use [] or set dropChance to 0 - DON'T delete the main files!\n");
 
             Files.write(readmePath, readme.toString().getBytes());
         }
@@ -142,10 +201,21 @@ public class LootDropsReadmeCreator {
             readme.append("These drops will always be checked when entities are killed,\n");
             readme.append("regardless of any active events.\n\n");
 
+            readme.append("HOW TO DISABLE DROPS:\n");
+            readme.append("====================\n");
+            readme.append("To disable drops without losing your file:\n\n");
+
+            readme.append("Option 1 - Empty the file:\n");
+            readme.append("Replace all content with: []\n\n");
+
+            readme.append("Option 2 - Set drop chances to 0:\n");
+            readme.append("Change \"dropChance\": [value] to \"dropChance\": 0\n\n");
+
             readme.append("IMPORTANT:\n");
             readme.append("- Global_Hostile_Drops.json is your main configuration file\n");
             readme.append("- It will regenerate if deleted, but you'll lose your custom settings\n");
             readme.append("- Example files can be safely deleted and will regenerate with updates\n");
+            readme.append("- To disable drops, use [] or dropChance: 0 instead of deleting files\n");
 
             Files.write(readmePath, readme.toString().getBytes());
         }

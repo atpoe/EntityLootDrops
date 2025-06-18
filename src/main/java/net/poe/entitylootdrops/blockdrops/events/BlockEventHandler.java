@@ -19,8 +19,11 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -37,7 +40,7 @@ import net.poe.entitylootdrops.blockdrops.regeneration.BlockRegenerationManager;
 public class BlockEventHandler {
     private static final Logger LOGGER = LogManager.getLogger();
     private static final Random RANDOM = new Random();
-    
+
     /**
      * Handles block break events to provide custom drops and manage regeneration.
      */
@@ -47,26 +50,30 @@ public class BlockEventHandler {
         if (event.getLevel().isClientSide()) {
             return;
         }
-        
+
         ServerLevel level = (ServerLevel) event.getLevel();
         BlockPos pos = event.getPos();
         BlockState state = event.getState();
-        
-        // Check if this block is currently regenerating
+
+        // Check if this block is currently regenerating (i.e., is a replacement block)
         if (BlockRegenerationManager.isScheduledForRegeneration(level, pos)) {
             // This is a replacement block that's scheduled for regeneration
             if (event.getPlayer() instanceof ServerPlayer serverPlayer) {
                 if (serverPlayer.gameMode.getGameModeForPlayer() == GameType.CREATIVE) {
                     // Creative mode player can break it - cancel regeneration
                     BlockRegenerationManager.cancelRegeneration(level, pos);
-                    LOGGER.debug("Creative mode player {} broke regenerating block at {} - regeneration cancelled", 
-                               serverPlayer.getGameProfile().getName(), pos);
-                    return; // Allow the break to proceed
+                    LOGGER.debug("Creative mode player {} broke regenerating block at {} - regeneration cancelled",
+                            serverPlayer.getGameProfile().getName(), pos);
+                    // Allow the break to proceed (do not cancel event)
+                    return;
                 } else {
                     // Non-creative player cannot break regenerating blocks
                     event.setCanceled(true);
-                    LOGGER.debug("Non-creative player {} tried to break regenerating block at {} - break cancelled", 
-                               serverPlayer.getGameProfile().getName(), pos);
+                    serverPlayer.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal("§cThis block is regenerating and cannot be broken!"), true
+                    );
+                    LOGGER.debug("Non-creative player {} tried to break regenerating block at {} - break cancelled",
+                            serverPlayer.getGameProfile().getName(), pos);
                     return;
                 }
             } else {
@@ -76,288 +83,255 @@ public class BlockEventHandler {
                 return;
             }
         }
-        
+
         // Check if player is in creative mode - skip custom drops and regeneration for creative mode
         if (event.getPlayer() instanceof ServerPlayer serverPlayer) {
             if (serverPlayer.gameMode.getGameModeForPlayer() == GameType.CREATIVE) {
-                LOGGER.debug("Skipping custom drops and regeneration for creative mode player: {}", 
-                           serverPlayer.getGameProfile().getName());
+                LOGGER.debug("Skipping custom drops and regeneration for creative mode player: {}",
+                        serverPlayer.getGameProfile().getName());
                 return;
             }
         }
-        
+
         // Get the block ID
         ResourceLocation blockId = ForgeRegistries.BLOCKS.getKey(state.getBlock());
         if (blockId == null) {
             return;
         }
-        
+
         String blockIdString = blockId.toString();
-        
-        // Find applicable block drop entries using existing BlockConfig methods
-        List<BlockDropEntry> applicableEntries = getApplicableDrops(blockIdString);
-        
+
+        // Find applicable block drop entries using BlockConfig methods
+        List<BlockDropEntry> applicableEntries = BlockConfig.getApplicableDrops(blockIdString);
+
         if (applicableEntries.isEmpty()) {
             return;
         }
-        
-        LOGGER.debug("Processing {} applicable drop entries for block: {}", applicableEntries.size(), blockIdString);
-        
+
+        boolean shouldCancelDefaultDrops = false;
         boolean hasRegeneratingEntry = false;
         BlockDropEntry regeneratingEntry = null;
-        
+        boolean hasCustomDrops = false;
+
         // Process each applicable entry
         for (BlockDropEntry entry : applicableEntries) {
-            // Check if this entry requires player break
-            if (entry.isRequirePlayerBreak() && !(event.getPlayer() instanceof ServerPlayer)) {
+            // Check if this entry should apply to this specific block break
+            if (!shouldProcessEntry(entry, event.getPlayer(), level, pos, state)) {
                 continue;
             }
-            
-            // Check tool requirements
-            if (!checkToolRequirements(entry, event.getPlayer())) {
-                continue;
-            }
-            
-            // Check drop chance
-            if (RANDOM.nextFloat() * 100.0f > entry.getDropChance()) {
-                continue;
-            }
-            
-            // Process the drop (commands are executed here AFTER all requirements are met)
-            processBlockDrop(entry, level, pos, (ServerPlayer) event.getPlayer());
-            
-            // Check for regeneration (only one entry should handle regeneration per block)
+
+            // Check for regeneration BEFORE drop chance (regeneration should happen regardless of drops)
             if (entry.canRegenerate() && !hasRegeneratingEntry) {
                 hasRegeneratingEntry = true;
                 regeneratingEntry = entry;
             }
-            
-            // Handle default drops replacement
-            if (entry.isReplaceDefaultDrops()) {
-                event.setCanceled(true);
-                LOGGER.debug("Cancelled default drops for block: {}", blockIdString);
+
+            // Check drop chance for actual drops
+            if (entry.getDropChance() < 100.0f && RANDOM.nextFloat() * 100.0f > entry.getDropChance()) {
+                continue; // Skip drops but regeneration still happens
+            }
+
+            // Handle item drops
+            if (entry.getItemId() != null && !entry.getItemId().isEmpty()) {
+                dropCustomItem(level, pos, entry);
+                hasCustomDrops = true;
+            }
+
+            // Handle command execution
+            if (entry.getCommand() != null && !entry.getCommand().isEmpty()) {
+                executeCommand(level, pos, entry, event.getPlayer());
+            }
+
+            // Check for default drops handling - only cancel if we have custom drops and allowDefaultDrops is false
+            if (entry.isReplaceDefaultDrops() && hasCustomDrops && !entry.isAllowDefaultDrops()) {
+                shouldCancelDefaultDrops = true;
             }
         }
-        
-        // Handle block regeneration after processing all drops
+
+        // Handle block regeneration FIRST - this needs to happen before canceling the event
         if (hasRegeneratingEntry && regeneratingEntry != null) {
-            handleBlockRegeneration(level, pos, state, regeneratingEntry);
+            handleBlockRegeneration(level, pos, state, regeneratingEntry, event);
+        }
+
+        // Handle default drops cancellation AFTER regeneration is set up
+        if (shouldCancelDefaultDrops) {
+            event.setCanceled(true);
         }
     }
-    
+
     /**
-     * Gets all applicable drop entries for a specific block ID using existing BlockConfig methods.
+     * Checks if a drop entry should be processed for this block break.
      */
-    private static List<BlockDropEntry> getApplicableDrops(String blockId) {
-        List<BlockDropEntry> applicableEntries = new ArrayList<>();
-        
-        try {
-            // Check normal drops
-            List<BlockDropEntry> normalDrops = BlockConfig.getNormalDrops();
-            for (BlockDropEntry entry : normalDrops) {
-                if (entry.getBlockId() == null || entry.getBlockId().equals(blockId)) {
-                    applicableEntries.add(entry);
-                }
-            }
-            
-            // Check active event drops
-            for (String eventName : BlockConfig.getActiveBlockEvents()) {
-                List<BlockDropEntry> eventDrops = BlockConfig.getEventDrops(eventName);
-                if (eventDrops != null) {
-                    for (BlockDropEntry entry : eventDrops) {
-                        if (entry.getBlockId() == null || entry.getBlockId().equals(blockId)) {
-                            applicableEntries.add(entry);
-                        }
-                    }
-                }
-            }
-            
-        } catch (Exception e) {
-            LOGGER.error("Failed to get applicable drops for block: {}", blockId, e);
+    private static boolean shouldProcessEntry(BlockDropEntry entry, net.minecraft.world.entity.player.Player player,
+                                              ServerLevel level, BlockPos pos, BlockState state) {
+        // Check if player break is required
+        if (entry.isRequirePlayerBreak() && player == null) {
+            return false;
         }
-        
-        return applicableEntries;
-    }
-    
-    /**
-     * Checks if the player's tool meets the requirements for the drop.
-     */
-    private static boolean checkToolRequirements(BlockDropEntry entry, net.minecraft.world.entity.player.Player player) {
-        if (!(player instanceof ServerPlayer serverPlayer)) {
-            return true; // Non-player breaks don't have tool requirements
-        }
-        
-        ItemStack tool = serverPlayer.getMainHandItem();
-        
+
         // Check required tool
-        if (entry.hasRequiredTool()) {
-            ResourceLocation requiredToolId = new ResourceLocation(entry.getRequiredTool());
-            Item requiredTool = ForgeRegistries.ITEMS.getValue(requiredToolId);
-            if (requiredTool == null || !tool.is(requiredTool)) {
-                LOGGER.debug("Tool requirement not met. Required: {}, Used: {}", 
-                           entry.getRequiredTool(), ForgeRegistries.ITEMS.getKey(tool.getItem()));
+        if (entry.getRequiredTool() != null && !entry.getRequiredTool().isEmpty() && player != null) {
+            ItemStack heldItem = player.getMainHandItem();
+            if (heldItem.isEmpty()) {
+                return false;
+            }
+
+            ResourceLocation toolId = ForgeRegistries.ITEMS.getKey(heldItem.getItem());
+            if (toolId == null || !toolId.toString().equals(entry.getRequiredTool())) {
                 return false;
             }
         }
-        
-        // Check required tool tier
-        if (entry.hasRequiredToolTier()) {
-            // This would need to be implemented based on your tool tier system
-            // For now, we'll skip this check
-            LOGGER.debug("Tool tier check not implemented yet: {}", entry.getRequiredToolTier());
-        }
-        
+
         // Check required enchantment
-        if (entry.hasRequiredEnchantment()) {
-            ResourceLocation enchantmentId = new ResourceLocation(entry.getRequiredEnchantment());
-            Enchantment requiredEnchantment = ForgeRegistries.ENCHANTMENTS.getValue(enchantmentId);
-            if (requiredEnchantment == null) {
-                LOGGER.warn("Invalid enchantment ID: {}", entry.getRequiredEnchantment());
+        if (entry.getRequiredEnchantment() != null && !entry.getRequiredEnchantment().isEmpty() && player != null) {
+            ItemStack heldItem = player.getMainHandItem();
+            if (heldItem.isEmpty()) {
                 return false;
             }
-            
-            int enchantLevel = tool.getEnchantmentLevel(requiredEnchantment);
-            if (enchantLevel < entry.getRequiredEnchantLevel()) {
-                LOGGER.debug("Enchantment level requirement not met. Required: {} level {}, Has: level {}", 
-                           entry.getRequiredEnchantment(), entry.getRequiredEnchantLevel(), enchantLevel);
+
+            try {
+                ResourceLocation enchantmentId = new ResourceLocation(entry.getRequiredEnchantment());
+                Enchantment requiredEnchantment = ForgeRegistries.ENCHANTMENTS.getValue(enchantmentId);
+                if (requiredEnchantment == null) {
+                    return false;
+                }
+
+                int enchantmentLevel = EnchantmentHelper.getItemEnchantmentLevel(requiredEnchantment, heldItem);
+                if (enchantmentLevel < entry.getRequiredEnchantLevel()) {
+                    return false;
+                }
+            } catch (Exception e) {
+                LOGGER.error("Invalid required enchantment ID: {}", entry.getRequiredEnchantment(), e);
                 return false;
             }
         }
-        
+
         return true;
     }
-    
+
     /**
-     * Processes a block drop entry by giving items and executing commands.
-     * Commands are now executed ONLY after all requirements are validated.
+     * Drops a custom item based on the drop entry configuration.
      */
-    private static void processBlockDrop(BlockDropEntry entry, ServerLevel level, BlockPos pos, ServerPlayer player) {
+    private static void dropCustomItem(ServerLevel level, BlockPos pos, BlockDropEntry entry) {
         try {
-            // Execute command FIRST if present (since we've already validated all requirements)
-            if (entry.hasCommand() && RANDOM.nextFloat() * 100.0f <= entry.getCommandChance()) {
-                executeCommand(entry.getCommand(), level, pos, player);
-            }
-            
-            // Give the item drop
-            giveItemDrop(entry, level, pos, player);
-            
-        } catch (Exception e) {
-            LOGGER.error("Failed to process block drop for entry: {}", entry.getItemId(), e);
-        }
-    }
-    
-    /**
-     * Gives the item drop to the player or spawns it in the world.
-     */
-    private static void giveItemDrop(BlockDropEntry entry, ServerLevel level, BlockPos pos, ServerPlayer player) {
-        try {
-            // Get the item
             ResourceLocation itemId = new ResourceLocation(entry.getItemId());
             Item item = ForgeRegistries.ITEMS.getValue(itemId);
             if (item == null) {
-                LOGGER.error("Invalid item ID in block drop: {}", entry.getItemId());
+                LOGGER.error("Invalid item ID: {}", entry.getItemId());
                 return;
             }
-            
-            // Calculate amount
-            int amount;
-            if (entry.getMinAmount() == entry.getMaxAmount()) {
-                amount = entry.getMinAmount();
-            } else {
-                amount = RANDOM.nextInt(entry.getMinAmount(), entry.getMaxAmount() + 1);
+
+            // Calculate drop amount
+            int amount = entry.getMinAmount();
+            if (entry.getMaxAmount() > entry.getMinAmount()) {
+                amount = RANDOM.nextInt(entry.getMaxAmount() - entry.getMinAmount() + 1) + entry.getMinAmount();
             }
-            
-            // Apply double drops event if active
+
+            // Apply double drops if active
             if (BlockConfig.isBlockDoubleDropsActive()) {
                 amount *= 2;
-                LOGGER.debug("Doubled drop amount for {} to {}", entry.getItemId(), amount);
             }
-            
-            // Create the item stack
-            ItemStack stack = new ItemStack(item, amount);
-            
-            // Apply NBT if present
-            if (entry.hasNbtData()) {
+
+            // Create item stack
+            ItemStack itemStack = new ItemStack(item, amount);
+
+            // Apply NBT data if specified (this is where enchantments can be added via NBT)
+            if (entry.getNbtData() != null && !entry.getNbtData().isEmpty()) {
                 try {
                     CompoundTag nbt = TagParser.parseTag(entry.getNbtData());
-                    stack.setTag(nbt);
+                    itemStack.setTag(nbt);
                 } catch (Exception e) {
-                    LOGGER.error("Invalid NBT data in block drop: {}", entry.getNbtData(), e);
+                    LOGGER.error("Invalid NBT data for item {}: {}", entry.getItemId(), entry.getNbtData(), e);
                 }
             }
-            
-            // Spawn the item in the world
-            double x = pos.getX() + 0.5;
-            double y = pos.getY() + 0.5;
-            double z = pos.getZ() + 0.5;
-            
-            ItemEntity itemEntity = new ItemEntity(level, x, y, z, stack);
-            itemEntity.setPickUpDelay(10); // Short delay before pickup
+
+            // Drop the item
+            Vec3 dropPos = Vec3.atCenterOf(pos);
+            ItemEntity itemEntity = new ItemEntity(level, dropPos.x, dropPos.y + 0.5, dropPos.z, itemStack);
+            itemEntity.setDefaultPickUpDelay();
             level.addFreshEntity(itemEntity);
-            
-            LOGGER.debug("Spawned {} x{} at {}", entry.getItemId(), amount, pos);
-            
+
         } catch (Exception e) {
-            LOGGER.error("Failed to give item drop", e);
+            LOGGER.error("Failed to drop custom item: {}", entry.getItemId(), e);
         }
     }
-    
+
     /**
-     * Executes a command with player and position context.
-     * This method is now only called AFTER all requirements have been validated.
+     * Executes a command specified in the drop entry.
      */
-    private static void executeCommand(String command, ServerLevel level, BlockPos pos, ServerPlayer player) {
-        MinecraftServer server = level.getServer();
-        if (server == null) return;
-        
+    private static void executeCommand(ServerLevel level, BlockPos pos, BlockDropEntry entry,
+                                       net.minecraft.world.entity.player.Player player) {
         try {
+            // Check command chance
+            if (entry.getCommandChance() < 100.0f && RANDOM.nextFloat() * 100.0f > entry.getCommandChance()) {
+                return;
+            }
+
+            String command = entry.getCommand();
+            if (command == null || command.isEmpty()) {
+                return;
+            }
+
             // Replace placeholders
-            String processedCommand = command
-                .replace("{player}", player.getGameProfile().getName())
-                .replace("{uuid}", player.getStringUUID())
-                .replace("{x}", String.valueOf(pos.getX()))
-                .replace("{y}", String.valueOf(pos.getY()))
-                .replace("{z}", String.valueOf(pos.getZ()))
-                .replace("{block_x}", String.valueOf(pos.getX()))
-                .replace("{block_y}", String.valueOf(pos.getY()))
-                .replace("{block_z}", String.valueOf(pos.getZ()));
-            
+            command = command.replace("{x}", String.valueOf(pos.getX()));
+            command = command.replace("{y}", String.valueOf(pos.getY()));
+            command = command.replace("{z}", String.valueOf(pos.getZ()));
+
+            if (player != null) {
+                command = command.replace("{player}", player.getGameProfile().getName());
+            }
+
             // Execute command
-            CommandSourceStack source = server.createCommandSourceStack()
-                .withLevel(level)
-                .withPosition(player.position())
-                .withEntity(player)
-                .withPermission(4);
-            
-            server.getCommands().performPrefixedCommand(source, processedCommand);
-            
-            LOGGER.debug("Executed command: {}", processedCommand);
-            
+            MinecraftServer server = level.getServer();
+            if (server != null) {
+                CommandSourceStack commandSource = server.createCommandSourceStack()
+                        .withLevel(level)
+                        .withPosition(Vec3.atCenterOf(pos))
+                        .withSuppressedOutput();
+
+                server.getCommands().performPrefixedCommand(commandSource, command);
+            }
+
         } catch (Exception e) {
-            LOGGER.error("Failed to execute block drop command: {}", command, e);
+            LOGGER.error("Failed to execute command: {}", entry.getCommand(), e);
         }
     }
-    
+
     /**
-     * Handles block regeneration by scheduling it with the regeneration manager.
+     * Handles block regeneration by scheduling the replacement after allowing default drops.
      */
-    private static void handleBlockRegeneration(ServerLevel level, BlockPos pos, BlockState originalState, BlockDropEntry entry) {
+    private static void handleBlockRegeneration(ServerLevel level, BlockPos pos, BlockState originalState,
+                                                BlockDropEntry entry, BlockEvent.BreakEvent event) {
         try {
-            LOGGER.debug("Scheduling regeneration for block {} at {} (replace with: {}, time: {}s)", 
-                        ForgeRegistries.BLOCKS.getKey(originalState.getBlock()), 
-                        pos, entry.getBrokenBlockReplace(), entry.getRespawnTime());
-            
-            // Schedule the regeneration
-            BlockRegenerationManager.scheduleRegeneration(
-                level,
-                pos,
-                originalState,
-                entry.getBrokenBlockReplace(),
-                entry.getRespawnTime()
-            );
-            
+            String replacementBlockId = entry.getBrokenBlockReplace();
+            if (replacementBlockId == null || replacementBlockId.isEmpty()) {
+                return;
+            }
+
+            // Get the replacement block
+            ResourceLocation blockId = new ResourceLocation(replacementBlockId);
+            Block replacementBlock = ForgeRegistries.BLOCKS.getValue(blockId);
+            if (replacementBlock == null) {
+                LOGGER.error("Invalid replacement block ID: {}", replacementBlockId);
+                return;
+            }
+
+            // Schedule the regeneration with a 3-tick delay to allow the block to break and drop items first
+            level.getServer().tell(new net.minecraft.server.TickTask(level.getServer().getTickCount() + 3, () -> {
+                // Place the replacement block after default drops have occurred
+                BlockState replacementState = replacementBlock.defaultBlockState();
+                level.setBlock(pos, replacementState, 3);
+
+                // Schedule regeneration
+                int respawnTime = entry.getRespawnTime();
+                if (respawnTime > 0) {
+                    BlockRegenerationManager.scheduleRegeneration(level, pos, originalState, replacementBlockId, respawnTime);
+                    LOGGER.debug("Scheduled regeneration for block at {} in {} seconds", pos, respawnTime);
+                }
+            }));
+
         } catch (Exception e) {
-            LOGGER.error("Failed to handle block regeneration at {}", pos, e);
+            LOGGER.error("Failed to handle block regeneration at {}: {}", pos, e.getMessage(), e);
         }
     }
 }

@@ -46,20 +46,6 @@ public class ReadmeManager {
                 BlockReadmeCreator.createNormalDropsReadme(blocksDir.resolve("Normal Drops"));
                 BlockReadmeCreator.createEventDropsReadme(blocksDir.resolve("Event Drops"));
 
-                // Create README for each event type
-                Path eventDropsDir = blocksDir.resolve("Event Drops");
-                if (Files.exists(eventDropsDir)) {
-                    Files.list(eventDropsDir)
-                            .filter(Files::isDirectory)
-                            .forEach(eventDir -> {
-                                try {
-                                    String eventName = eventDir.getFileName().toString();
-                                    BlockReadmeCreator.createEventTypeReadme(eventDir, eventName);
-                                } catch (IOException e) {
-                                    LOGGER.error("Failed to create README for event: {}", eventDir, e);
-                                }
-                            });
-                }
             }
 
             // Create recipes README

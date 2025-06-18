@@ -26,6 +26,8 @@ import net.poe.entitylootdrops.lootdrops.events.LootEventHandler;
 import net.poe.entitylootdrops.recipes.RecipeConfig;
 import net.poe.entitylootdrops.recipes.events.RecipeEventHandler;
 import net.poe.entitylootdrops.recipes.registration.RecipeRegistrationManager;
+import net.poe.entitylootdrops.adventure.AdventureModeConfigLoader;
+import net.poe.entitylootdrops.adventure.AdventureModeEventHandler;
 
 /**
  * Main mod class for the EntityLootDrops mod.
@@ -75,6 +77,12 @@ public class EntityLootDrops {
         // Register the fishing event handler to receive fishing-related events
         MinecraftForge.EVENT_BUS.register(FishingEventHandler.class);
         LOGGER.info("Registered FishingEventHandler");
+
+        // Register the Adventure Mode event handler
+        AdventureModeEventHandler.register();
+
+        // Load Adventure Mode config
+        AdventureModeConfigLoader.loadConfig(java.nio.file.Paths.get("config/EntityLootDrops"));
 
         // Register the setup event
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
@@ -150,6 +158,9 @@ public class EntityLootDrops {
         LootConfig.loadConfig();
         BlockConfig.loadConfig();
         RecipeConfig.loadConfig();
+
+        // Reload Adventure Mode config
+        AdventureModeConfigLoader.loadConfig(java.nio.file.Paths.get("config/EntityLootDrops"));
 
         // Reload fishing config
         try {

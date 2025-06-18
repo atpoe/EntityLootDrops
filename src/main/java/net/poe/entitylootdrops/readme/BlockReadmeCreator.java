@@ -76,17 +76,62 @@ public class BlockReadmeCreator {
             
             readme.append("Tool Requirements:\n");
             readme.append("- requiredTool: Specific tool required (e.g., \"minecraft:diamond_pickaxe\")\n");
-            readme.append("- requiredToolTier: Required tool tier (e.g., \"diamond\")\n");
-            readme.append("- requiredToolLevel: Required tool level (e.g., 3 for diamond)\n");
             readme.append("- requiredEnchantment: Required enchantment (e.g., \"minecraft:fortune\")\n");
             readme.append("- requiredEnchantLevel: Required enchantment level\n\n");
-            
+
             readme.append("Advanced Features:\n");
             readme.append("- nbtData: Custom NBT data for the dropped item\n");
             readme.append("- command: Command to execute when the block breaks\n");
             readme.append("- commandChance: Percentage chance to execute the command\n");
-            readme.append("- allowModIDs: List of mod IDs allowed to drop items when allowDefaultDrops is false\n");
-            
+            readme.append("- allowModIDs: List of mod IDs allowed to drop items when allowDefaultDrops is false\n\n");
+
+            readme.append("UNDERSTANDING 'GLOBAL' FILES:\n");
+            readme.append("============================\n");
+            readme.append("Files with 'Global' in the name (like Global_Block_Drops.json) apply to ALL blocks\n");
+            readme.append("of that type, unless you have a more specific configuration.\n\n");
+
+            readme.append("For example:\n");
+            readme.append("- Global_Block_Drops.json: Affects ALL blocks when broken\n");
+            readme.append("- Block Types/stone.json: Only affects stone blocks specifically\n");
+            readme.append("- Block Types/diamond_ore.json: Only affects diamond ore blocks\n\n");
+
+            readme.append("If you have both a global file and a specific block file, the specific\n");
+            readme.append("block file takes priority for that block type.\n\n");
+
+            readme.append("HOW TO DISABLE DROPS WITHOUT DELETING FILES:\n");
+            readme.append("==========================================\n");
+            readme.append("You can disable all drops in a file without deleting it using these methods:\n\n");
+
+            readme.append("Method 1 - Empty Array:\n");
+            readme.append("Replace the entire content with: []\n\n");
+
+            readme.append("Method 2 - Set Drop Chance and Command Chance to 0:\n");
+            readme.append("Set \"dropChance\": 0 for all drops you want to disable\n\n");
+
+            readme.append("Method 3 - Comment Out (Not Recommended):\n");
+            readme.append("JSON doesn't support comments, so use Method 1 or 2 instead\n\n");
+
+            readme.append("Example of Disabled File:\n");
+            readme.append("```json\n");
+            readme.append("[]\n");
+            readme.append("```\n\n");
+
+            readme.append("Example of Disabled Drop (keeping file structure):\n");
+            readme.append("```json\n");
+            readme.append("[\n");
+            readme.append("  {\n");
+            readme.append("    \"blockId\": \"minecraft:stone\",\n");
+            readme.append("    \"itemId\": \"minecraft:diamond\",\n");
+            readme.append("    \"dropChance\": 0,\n");
+            readme.append("    \"commandChance\": 0,\n");
+            readme.append("    \"minAmount\": 1,\n");
+            readme.append("    \"maxAmount\": 1,\n");
+            readme.append("    \"command\": \"say Stone was broken!\"\n");
+            readme.append("  }\n");
+            readme.append("]\n");
+            readme.append("```\n");
+            readme.append("(This disables both the diamond drop AND the command execution)\n\n");
+
             Files.write(readmePath, readme.toString().getBytes());
         }
     }
@@ -125,31 +170,6 @@ public class BlockReadmeCreator {
             readme.append("   /blockdrops listall\n\n");
             
             readme.append("Note: Event names are case-insensitive in commands, but the folder name will be displayed as created.\n");
-            
-            Files.write(readmePath, readme.toString().getBytes());
-        }
-    }
-    
-    /**
-     * Creates the README file for a specific event type.
-     */
-    public static void createEventTypeReadme(Path eventDir, String eventType) throws IOException {
-        Path readmePath = eventDir.resolve("README.txt");
-        if (!Files.exists(readmePath)) {
-            StringBuilder readme = new StringBuilder();
-            readme.append(eventType + " Event Configuration\n");
-            readme.append("=".repeat(eventType.length() + 19) + "\n\n");
-            
-            readme.append("This directory contains drops that only occur during the " + eventType + " event.\n\n");
-            
-            readme.append("To activate this event, use the command:\n");
-            readme.append("/blockdrops event " + eventType + " true\n\n");
-            
-            readme.append("To deactivate:\n");
-            readme.append("/blockdrops event " + eventType + " false\n\n");
-            
-            readme.append("Configuration follows the same format as normal drops.\n");
-            readme.append("See config/EntityLootDrops/Blocks/Normal Drops/README.txt for full property documentation.\n");
             
             Files.write(readmePath, readme.toString().getBytes());
         }

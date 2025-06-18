@@ -17,8 +17,8 @@ public class CustomBlockDropEntry {
     
     // Tool requirements
     private String requiredTool;
-    private String requiredToolTier;
-    private int requiredToolLevel;
+    //private String requiredToolTier;
+    //private int requiredToolLevel;
     private String requiredEnchantment;
     private int requiredEnchantLevel;
     
@@ -41,7 +41,7 @@ public class CustomBlockDropEntry {
         this.requirePlayerBreak = false;
         this.allowDefaultDrops = true;
         this.replaceDefaultDrops = false;
-        this.requiredToolLevel = 0;
+        //this.requiredToolLevel = 0;
         this.requiredEnchantLevel = 0;
         this.commandChance = 100.0f;
         
@@ -77,11 +77,11 @@ public class CustomBlockDropEntry {
     public String getRequiredTool() { return requiredTool; }
     public void setRequiredTool(String requiredTool) { this.requiredTool = requiredTool; }
     
-    public String getRequiredToolTier() { return requiredToolTier; }
-    public void setRequiredToolTier(String requiredToolTier) { this.requiredToolTier = requiredToolTier; }
+    //public String getRequiredToolTier() { return requiredToolTier; }
+    //public void setRequiredToolTier(String requiredToolTier) { this.requiredToolTier = requiredToolTier; }
     
-    public int getRequiredToolLevel() { return requiredToolLevel; }
-    public void setRequiredToolLevel(int requiredToolLevel) { this.requiredToolLevel = requiredToolLevel; }
+    //public int getRequiredToolLevel() { return requiredToolLevel; }
+    //public void setRequiredToolLevel(int requiredToolLevel) { this.requiredToolLevel = requiredToolLevel; }
     
     public String getRequiredEnchantment() { return requiredEnchantment; }
     public void setRequiredEnchantment(String requiredEnchantment) { this.requiredEnchantment = requiredEnchantment; }
@@ -132,9 +132,9 @@ public class CustomBlockDropEntry {
         return requiredEnchantment != null && !requiredEnchantment.isEmpty();
     }
     
-    public boolean hasRequiredToolTier() {
-        return requiredToolTier != null && !requiredToolTier.isEmpty();
-    }
+    //public boolean hasRequiredToolTier() {
+    //    return requiredToolTier != null && !requiredToolTier.isEmpty();
+    //}
     
     public boolean hasAllowModIDs() {
         return allowModIDs != null && !allowModIDs.isEmpty();

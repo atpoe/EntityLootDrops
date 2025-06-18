@@ -54,7 +54,7 @@ public class BlockEventManager {
         if (blockDoubleDropsActive) count++;
         return count;
     }
-    
+
     /**
      * Toggles a block event on or off.
      */
@@ -63,7 +63,7 @@ public class BlockEventManager {
             LOGGER.warn("Attempted to toggle unknown block event: {}", eventName);
             return;
         }
-        
+
         if (active) {
             activeBlockEvents.add(eventName);
             LOGGER.info("Enabled block event: {}", eventName);
@@ -71,9 +71,20 @@ public class BlockEventManager {
             activeBlockEvents.remove(eventName);
             LOGGER.info("Disabled block event: {}", eventName);
         }
-        
+
         // Save state immediately
         saveActiveEventsState();
+    }
+
+    /**
+     * Gets the formatted message for toggling an event.
+     */
+    public String getToggleMessage(String eventName, boolean enabled) {
+        if (enabled) {
+            return getBlockEventEnableMessage(eventName);
+        } else {
+            return getBlockEventDisableMessage(eventName);
+        }
     }
     
     /**

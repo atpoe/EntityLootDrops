@@ -83,14 +83,14 @@ public class DropUtils {
             }
         }
         
-        // Check required tool tier (simplified check)
-        if (drop.getRequiredToolTier() != null && !drop.getRequiredToolTier().isEmpty()) {
-            // This is a simplified check - you might want to implement more sophisticated tier checking
-            String heldItemId = ForgeRegistries.ITEMS.getKey(heldItem.getItem()).toString();
-            if (!heldItemId.contains(drop.getRequiredToolTier().toLowerCase())) {
-                return false;
-            }
-        }
+        // Check required tool tier (simplified check) - REMOVED
+//        if (drop.getRequiredToolTier() != null && !drop.getRequiredToolTier().isEmpty()) {
+//            // This is a simplified check - you might want to implement more sophisticated tier checking
+//            String heldItemId = ForgeRegistries.ITEMS.getKey(heldItem.getItem()).toString();
+//            if (!heldItemId.contains(drop.getRequiredToolTier().toLowerCase())) {
+//                return false;
+//            }
+//        }
         
         // Check required enchantment
         if (drop.getRequiredEnchantment() != null && !drop.getRequiredEnchantment().isEmpty()) {

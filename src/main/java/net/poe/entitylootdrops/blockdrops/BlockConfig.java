@@ -118,14 +118,14 @@ public class BlockConfig {
     public static List<BlockDropEntry> getBlockDrops(String blockId) {
         return configManager.getBlockDrops(blockId);
     }
-    
+
     /**
      * Gets all available block events.
      */
     public static Set<String> getAvailableBlockEvents() {
         return configManager.getAvailableBlockEvents();
     }
-    
+
     /**
      * Gets all currently active block events.
      */
@@ -181,33 +181,12 @@ public class BlockConfig {
     public static void saveActiveEventsState() {
         eventManager.saveActiveEventsState();
     }
-    
+
     /**
-     * Sets a custom message for when a block event is enabled.
+     * Gets the custom toggle message for an event.
      */
-    public static void setBlockEventEnableMessage(String eventName, String message) {
-        eventManager.setBlockEventEnableMessage(eventName, message);
-    }
-    
-    /**
-     * Sets a custom message for when a block event is disabled.
-     */
-    public static void setBlockEventDisableMessage(String eventName, String message) {
-        eventManager.setBlockEventDisableMessage(eventName, message);
-    }
-    
-    /**
-     * Gets the message displayed when a block event is enabled.
-     */
-    public static String getBlockEventEnableMessage(String eventName) {
-        return eventManager.getBlockEventEnableMessage(eventName);
-    }
-    
-    /**
-     * Gets the message displayed when a block event is disabled.
-     */
-    public static String getBlockEventDisableMessage(String eventName) {
-        return eventManager.getBlockEventDisableMessage(eventName);
+    public static String getToggleMessage(String eventName, boolean enabled) {
+        return eventManager.getToggleMessage(eventName, enabled);
     }
     
     /**
