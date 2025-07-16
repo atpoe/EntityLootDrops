@@ -1,10 +1,13 @@
 package net.poe.entitylootdrops.lootdrops.events;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,6 +56,9 @@ public class LootEventHandler {
     // Flag to control debug logging
     private static boolean debugLoggingEnabled = false;
 
+    // Command cooldown tracking - Maps player UUID to command hash to last execution time
+    private static final Map<UUID, Map<String, Long>> commandCooldowns = new HashMap<>();
+
     /**
      * Enables or disables debug logging.
      *
@@ -80,6 +86,51 @@ public class LootEventHandler {
     }
 
     /**
+     * Checks if a command is on cooldown for a player.
+     *
+     * @param player the player
+     * @param command the command to check
+     * @param cooldownSeconds the cooldown duration in seconds
+     * @return true if the command is on cooldown, false otherwise
+     */
+    private static boolean isCommandOnCooldown(Player player, String command, int cooldownSeconds) {
+        if (cooldownSeconds <= 0) {
+            return false;
+        }
+
+        UUID playerId = player.getUUID();
+        String commandHash = command.hashCode() + "";
+        long currentTime = System.currentTimeMillis();
+
+        Map<String, Long> playerCooldowns = commandCooldowns.computeIfAbsent(playerId, k -> new HashMap<>());
+        Long lastExecution = playerCooldowns.get(commandHash);
+
+        if (lastExecution == null) {
+            return false;
+        }
+
+        long timeSinceLastExecution = currentTime - lastExecution;
+        long cooldownMs = cooldownSeconds * 1000L;
+
+        return timeSinceLastExecution < cooldownMs;
+    }
+
+    /**
+     * Sets a command cooldown for a player.
+     *
+     * @param player the player
+     * @param command the command
+     */
+    private static void setCommandCooldown(Player player, String command) {
+        UUID playerId = player.getUUID();
+        String commandHash = command.hashCode() + "";
+        long currentTime = System.currentTimeMillis();
+
+        Map<String, Long> playerCooldowns = commandCooldowns.computeIfAbsent(playerId, k -> new HashMap<>());
+        playerCooldowns.put(commandHash, currentTime);
+    }
+
+    /**
      * Main event handler for entity deaths.
      * Processes custom drops based on configuration.
      */
@@ -103,8 +154,8 @@ public class LootEventHandler {
 
         logDebug("Processing drops for {} (hostile: {}, player killed: {})", entityIdStr, isHostile, playerKilled);
 
-        // Phase 1: Handle vanilla drop modifications
-        handleVanillaDropModifications(event, isHostile);
+        // Phase 1: Handle vanilla drop modifications (only check applicable drops)
+        handleVanillaDropModifications(event, entityIdStr, isHostile, player, playerKilled);
 
         // Phase 2: Apply drop events to all drops (vanilla and modded)
         if (playerKilled && player != null) {
@@ -119,93 +170,141 @@ public class LootEventHandler {
     }
 
     /**
-     * Handles vanilla drop modifications for hostile mobs.
+     * Handles vanilla drop modifications - only applies to entities with actual drop configurations.
      */
-    private static void handleVanillaDropModifications(LivingDropsEvent event, boolean isHostile) {
-        if (!isHostile) {
-            return;
-        }
-
-        boolean cancelVanillaDrops = false;
+    private static void handleVanillaDropModifications(LivingDropsEvent event, String entityIdStr, boolean isHostile, Player player, boolean playerKilled) {
+        boolean shouldCancelVanillaDrops = false;
         Set<String> allowedModIDs = new HashSet<>();
-        Set<String> configuredItemIds = collectConfiguredItemIds();
 
-        // Check if any drop entry cancels vanilla drops or specifies allowed mods
-        for (CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
-            if (!drop.isAllowDefaultDrops()) {
-                cancelVanillaDrops = true;
-            }
-            if (drop.getAllowModIDs() != null) {
-                allowedModIDs.addAll(drop.getAllowModIDs());
-            }
-        }
-
-        // Check event drops too
-        for (String eventName : LootConfig.getActiveEvents()) {
-            for (CustomDropEntry drop : LootConfig.getEventHostileDrops(eventName)) {
+        // Check entity-specific drops first
+        for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
+            if (drop.getEntityId().equals(entityIdStr)) {
                 if (!drop.isAllowDefaultDrops()) {
-                    cancelVanillaDrops = true;
+                    shouldCancelVanillaDrops = true;
                 }
-                if (drop.getAllowModIDs() != null) {
+                if (drop.getAllowModIDs() != null && !drop.getAllowModIDs().isEmpty()) {
                     allowedModIDs.addAll(drop.getAllowModIDs());
                 }
             }
         }
 
-        if (!cancelVanillaDrops && allowedModIDs.isEmpty()) {
+        // Check hostile drops only if this is a hostile mob AND has applicable drops
+        if (isHostile) {
+            List<CustomDropEntry> applicableHostileDrops = getApplicableHostileDrops(player, playerKilled);
+            if (!applicableHostileDrops.isEmpty()) {
+                for (CustomDropEntry drop : applicableHostileDrops) {
+                    if (!drop.isAllowDefaultDrops()) {
+                        shouldCancelVanillaDrops = true;
+                    }
+                    if (drop.getAllowModIDs() != null && !drop.getAllowModIDs().isEmpty()) {
+                        allowedModIDs.addAll(drop.getAllowModIDs());
+                    }
+                }
+            }
+        }
+
+        // Check event-specific drops
+        for (String eventName : LootConfig.getActiveEvents()) {
+            String matchingEventName = findMatchingEventName(eventName);
+            if (matchingEventName != null) {
+                // Check event entity-specific drops
+                List<EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(matchingEventName);
+                if (eventDropList != null) {
+                    for (EntityDropEntry drop : eventDropList) {
+                        if (drop.getEntityId().equals(entityIdStr)) {
+                            if (!drop.isAllowDefaultDrops()) {
+                                shouldCancelVanillaDrops = true;
+                            }
+                            if (drop.getAllowModIDs() != null && !drop.getAllowModIDs().isEmpty()) {
+                                allowedModIDs.addAll(drop.getAllowModIDs());
+                            }
+                        }
+                    }
+                }
+
+                // Check event hostile drops only if this is a hostile mob AND has applicable drops
+                if (isHostile) {
+                    List<CustomDropEntry> applicableEventHostileDrops = getApplicableEventHostileDrops(matchingEventName, player, playerKilled);
+                    if (!applicableEventHostileDrops.isEmpty()) {
+                        for (CustomDropEntry drop : applicableEventHostileDrops) {
+                            if (!drop.isAllowDefaultDrops()) {
+                                shouldCancelVanillaDrops = true;
+                            }
+                            if (drop.getAllowModIDs() != null && !drop.getAllowModIDs().isEmpty()) {
+                                allowedModIDs.addAll(drop.getAllowModIDs());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If no modifications needed, return early
+        if (!shouldCancelVanillaDrops && allowedModIDs.isEmpty()) {
             return;
         }
 
-        // Filter drops
+        // Filter drops based on the configuration
         List<ItemEntity> filteredDrops = new ArrayList<>();
         for (ItemEntity itemEntity : event.getDrops()) {
             ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(itemEntity.getItem().getItem());
             if (itemId != null) {
                 String modId = itemId.getNamespace();
-                String itemIdStr = itemId.toString();
 
-                // Keep the drop if it's from an allowed mod or specified in drop entries
-                boolean keepDrop = allowedModIDs.contains(modId) || configuredItemIds.contains(itemIdStr);
+                boolean keepDrop = false;
+
+                // If vanilla drops are not cancelled, keep all drops
+                if (!shouldCancelVanillaDrops) {
+                    keepDrop = true;
+                }
+                // If there are allowed mod IDs, keep drops from those mods
+                else if (!allowedModIDs.isEmpty() && allowedModIDs.contains(modId)) {
+                    keepDrop = true;
+                }
 
                 if (keepDrop) {
                     filteredDrops.add(itemEntity);
-                    logDebug("Keeping drop {} (allowed mod or specified in drop entries)", itemId);
-                } else {
-                    logDebug("Removing drop {} (not from allowed mod and not specified in drop entries)", itemId);
                 }
             }
         }
 
-        // Replace drops with filtered list
+        // Update the drops list
         event.getDrops().clear();
         event.getDrops().addAll(filteredDrops);
+
+        logDebug("Filtered vanilla drops: cancelled={}, allowed mods={}", shouldCancelVanillaDrops, allowedModIDs);
     }
 
     /**
-     * Applies drop chance and double drops events to all drops (vanilla and modded).
+     * Gets applicable hostile drops that meet requirements.
+     */
+    private static List<CustomDropEntry> getApplicableHostileDrops(Player player, boolean playerKilled) {
+        List<CustomDropEntry> applicableDrops = new ArrayList<>();
+        for (CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
+            if (checkDropRequirements(drop, player, playerKilled)) {
+                applicableDrops.add(drop);
+            }
+        }
+        return applicableDrops;
+    }
+
+    /**
+     * Gets applicable event hostile drops that meet requirements.
+     */
+    private static List<CustomDropEntry> getApplicableEventHostileDrops(String eventName, Player player, boolean playerKilled) {
+        List<CustomDropEntry> applicableDrops = new ArrayList<>();
+        for (CustomDropEntry drop : LootConfig.getEventHostileDrops(eventName)) {
+            if (checkDropRequirements(drop, player, playerKilled)) {
+                applicableDrops.add(drop);
+            }
+        }
+        return applicableDrops;
+    }
+
+    /**
+     * Applies drop events to existing drops.
      */
     private static void applyDropEvents(LivingDropsEvent event) {
-        // If drop chance event is active, potentially duplicate drops
-        if (LootConfig.isDropChanceEventActive()) {
-            List<ItemEntity> additionalDrops = new ArrayList<>();
-
-            event.getDrops().forEach(itemEntity -> {
-                if (RANDOM.nextFloat() < 0.5f) {
-                    ItemStack originalStack = itemEntity.getItem();
-                    ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(originalStack.getItem());
-
-                    // Check if this mod should be affected by events
-                    if (itemId != null && EventConfig.isModAllowedForDropEvents(itemId.getNamespace())) {
-                        ItemEntity duplicate = createDuplicateItemEntity(itemEntity);
-                        additionalDrops.add(duplicate);
-                        logDebug("Drop chance event: Duplicated {} from mod {}", itemId, itemId.getNamespace());
-                    }
-                }
-            });
-
-            event.getDrops().addAll(additionalDrops);
-        }
-
         // If double drops is active, double all drops
         if (LootConfig.isDoubleDropsActive()) {
             List<ItemEntity> doubledDrops = new ArrayList<>();
@@ -213,43 +312,26 @@ public class LootEventHandler {
             event.getDrops().forEach(itemEntity -> {
                 ItemStack originalStack = itemEntity.getItem();
                 ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(originalStack.getItem());
+                if (itemId != null) {
+                    ItemStack duplicateStack = new ItemStack(originalStack.getItem(), originalStack.getCount());
+                    if (originalStack.getTag() != null) {
+                        duplicateStack.setTag(originalStack.getTag().copy());
+                    }
 
-                // Check if this mod should be affected by events
-                if (itemId != null && EventConfig.isModAllowedForDropEvents(itemId.getNamespace())) {
-                    ItemEntity duplicate = createDuplicateItemEntity(itemEntity);
-                    doubledDrops.add(duplicate);
-                    logDebug("Double drops event: Doubled {} from mod {}", itemId, itemId.getNamespace());
+                    ItemEntity duplicateEntity = new ItemEntity(
+                            itemEntity.level(),
+                            itemEntity.getX(),
+                            itemEntity.getY(),
+                            itemEntity.getZ(),
+                            duplicateStack
+                    );
+                    duplicateEntity.setDeltaMovement(itemEntity.getDeltaMovement());
+                    doubledDrops.add(duplicateEntity);
                 }
             });
 
             event.getDrops().addAll(doubledDrops);
         }
-    }
-
-    /**
-     * Collects all configured item IDs from drop entries.
-     */
-    private static Set<String> collectConfiguredItemIds() {
-        Set<String> configuredItemIds = new HashSet<>();
-
-        // Add from normal hostile drops
-        for (CustomDropEntry drop : LootConfig.getNormalHostileDrops()) {
-            if (drop.getItemId() != null) {
-                configuredItemIds.add(drop.getItemId());
-            }
-        }
-
-        // Add from event drops
-        for (String eventName : LootConfig.getActiveEvents()) {
-            List<CustomDropEntry> eventDrops = LootConfig.getEventHostileDrops(eventName);
-            for (CustomDropEntry drop : eventDrops) {
-                if (drop.getItemId() != null) {
-                    configuredItemIds.add(drop.getItemId());
-                }
-            }
-        }
-
-        return configuredItemIds;
     }
 
     /**
@@ -355,25 +437,23 @@ public class LootEventHandler {
                 original.getZ(),
                 duplicateStack
         );
-
         duplicate.setDeltaMovement(original.getDeltaMovement());
-        duplicate.setDefaultPickUpDelay();
 
         return duplicate;
     }
 
     /**
-     * Processes all custom drops.
+     * Processes custom drops for a specific entity.
      */
     private static void processCustomDrops(LivingDropsEvent event, String entityIdStr, boolean isHostile,
                                            Player player, boolean playerKilled) {
-        // Process normal drops
+        // Process normal entity-specific drops
+        processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player, playerKilled);
+
+        // Process normal hostile drops
         if (isHostile) {
             processDrops(event, LootConfig.getNormalHostileDrops(), player, playerKilled);
         }
-
-        // Process entity-specific drops
-        processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player, playerKilled);
 
         // Process event-specific drops
         for (String eventName : LootConfig.getActiveEvents()) {
@@ -389,11 +469,13 @@ public class LootEventHandler {
      */
     private static void processEventDrops(LivingDropsEvent event, String entityIdStr, String eventName,
                                           Player player, boolean playerKilled, boolean isHostile) {
+        // Process event entity-specific drops
         List<EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(eventName);
         if (eventDropList != null) {
             processEntityDrops(event, entityIdStr, eventDropList, player, playerKilled);
         }
 
+        // Process event hostile drops
         if (isHostile) {
             processDrops(event, LootConfig.getEventHostileDrops(eventName), player, playerKilled);
         }
@@ -460,9 +542,26 @@ public class LootEventHandler {
      */
     private static void executeDropCommand(CustomDropEntry drop, Player player, LivingEntity entity) {
         if (drop.hasCommand() && player instanceof ServerPlayer) {
+            ServerPlayer serverPlayer = (ServerPlayer) player;
+
+            // Check command cooldown
+            logDebug("Checking cooldown for command: {} (cooldown: {})", drop.getCommand(), drop.getCommandCoolDown());
+            if (isCommandOnCooldown(player, drop.getCommand(), drop.getCommandCoolDown())) {
+                logDebug("Command on cooldown for player {}: {}", player.getName().getString(), drop.getCommand());
+                return;
+            }
+
             float commandChance = drop.getCommandChance();
             if (commandChance > 0 && RANDOM.nextFloat() * 100 <= commandChance) {
-                executeCommand(drop.getCommand(), (ServerPlayer) player, entity);
+                logDebug("Executing command: {}", drop.getCommand());
+                executeCommand(drop.getCommand(), serverPlayer, entity);
+
+                // Set cooldown after successful execution
+                if (drop.getCommandCoolDown() > 0) {
+                    logDebug("Setting cooldown for {} seconds", drop.getCommandCoolDown());
+                    setCommandCooldown(player, drop.getCommand());
+                    logDebug("Cooldown set for player {}", player.getName().getString());
+                }
             }
         }
     }
@@ -471,6 +570,11 @@ public class LootEventHandler {
      * Handles the item drop logic.
      */
     private static void handleItemDrop(LivingDropsEvent event, CustomDropEntry drop, Player player) {
+        // Skip item drop if itemId is null or empty
+        if (drop.getItemId() == null || drop.getItemId().isEmpty()) {
+            return;
+        }
+
         float dropChance = drop.getDropChance();
         if (LootConfig.isDropChanceEventActive() && event.getSource().getEntity() instanceof Player) {
             dropChance *= 2.0f;
@@ -496,10 +600,50 @@ public class LootEventHandler {
      */
     private static void executeDropCommandOnDrop(CustomDropEntry drop, Player player, LivingEntity entity, int amount) {
         if (drop.hasDropCommand() && player instanceof ServerPlayer) {
+            ServerPlayer serverPlayer = (ServerPlayer) player;
+
+            // Use dropCommand cooldown if available, otherwise no cooldown
+            int cooldownSeconds = 0; // Default no cooldown for dropCommand
+
             float dropCommandChance = drop.getDropCommandChance();
             if (dropCommandChance > 0 && RANDOM.nextFloat() * 100 <= dropCommandChance) {
-                executeDropCommand(drop.getDropCommand(), (ServerPlayer) player, entity, drop, amount);
+                logDebug("Executing drop command: {}", drop.getDropCommand());
+                executeCommand(drop.getDropCommand(), serverPlayer, entity);
+
+                // Set cooldown after successful execution if needed
+                if (cooldownSeconds > 0) {
+                    setCommandCooldown(player, drop.getDropCommand());
+                }
             }
+        }
+    }
+
+    /**
+     * Executes a command with placeholder replacement.
+     */
+    private static void executeCommand(String command, ServerPlayer player, LivingEntity entity) {
+        try {
+            MinecraftServer server = player.getServer();
+            if (server == null) {
+                return;
+            }
+
+            // Replace placeholders
+            String processedCommand = replacePlaceholders(command, player, entity);
+
+            // Create command source
+            CommandSourceStack commandSource = server.createCommandSourceStack()
+                    .withEntity(player)
+                    .withLevel((ServerLevel) player.level())
+                    .withPosition(player.position())
+                    .withRotation(player.getRotationVector())
+                    .withPermission(2);
+
+            // Execute the command
+            server.getCommands().performPrefixedCommand(commandSource, processedCommand);
+
+        } catch (Exception e) {
+            LOGGER.error("Error executing command '{}': {}", command, e.getMessage());
         }
     }
 
@@ -554,51 +698,62 @@ public class LootEventHandler {
             return false;
         }
 
+        return checkDropRequirements(drop, player);
+    }
+
+    /**
+     * Checks if all drop requirements are met (overloaded version).
+     */
+    private static boolean checkDropRequirements(CustomDropEntry drop, Player player) {
+        if (player == null) {
+            return false;
+        }
+
         // Check advancement requirement
-        if (drop.hasRequiredAdvancement()) {
-            if (!checkAdvancementRequirement(drop, player)) {
+        if (drop.getRequiredAdvancement() != null && !drop.getRequiredAdvancement().isEmpty()) {
+            if (!hasAdvancement(player, drop.getRequiredAdvancement())) {
                 return false;
             }
         }
 
         // Check effect requirement
-        if (drop.hasRequiredEffect()) {
-            if (!checkEffectRequirement(drop, player)) {
+        if (drop.getRequiredEffect() != null && !drop.getRequiredEffect().isEmpty()) {
+            if (!hasEffect(player, drop.getRequiredEffect())) {
                 return false;
             }
         }
 
         // Check equipment requirement
-        if (drop.hasRequiredEquipment()) {
-            if (!checkEquipmentRequirement(drop, player)) {
-                return false;
-            }
-        }
-
-        // Check dimension requirement
-        if (drop.hasRequiredDimension()) {
-            if (!checkDimensionRequirement(drop, player)) {
-                return false;
-            }
-        }
-
-        // Check biome requirement
-        if (drop.hasRequiredBiome()) {
-            if (!checkBiomeRequirement(drop, player)) {
+        if (drop.getRequiredEquipment() != null && !drop.getRequiredEquipment().isEmpty()) {
+            if (!hasEquipment(player, drop.getRequiredEquipment())) {
                 return false;
             }
         }
 
         // Check weather requirement
-        if (drop.hasRequiredWeather()) {
-            if (!checkWeatherRequirement(drop, player)) {
+        if (drop.getRequiredWeather() != null && !drop.getRequiredWeather().isEmpty()) {
+            if (!checkWeather(player, drop.getRequiredWeather())) {
                 return false;
             }
         }
 
         // Check time requirement
-        if (drop.hasRequiredTime()) {
-            if (!checkTimeRequirement(drop, player)) {
+        if (drop.getRequiredTime() != null && !drop.getRequiredTime().isEmpty()) {
+            if (!checkTime(player, drop.getRequiredTime())) {
+                return false;
+            }
+        }
+
+        // Check dimension requirement
+        if (drop.getRequiredDimension() != null && !drop.getRequiredDimension().isEmpty()) {
+            if (!checkDimension(player, drop.getRequiredDimension())) {
+                return false;
+            }
+        }
+
+        // Check biome requirement
+        if (drop.getRequiredBiome() != null && !drop.getRequiredBiome().isEmpty()) {
+            if (!checkBiome(player, drop.getRequiredBiome())) {
                 return false;
             }
         }
@@ -607,23 +762,16 @@ public class LootEventHandler {
     }
 
     /**
-     * Checks if all drop requirements are met (overloaded for single player parameter).
-     */
-    private static boolean checkDropRequirements(CustomDropEntry drop, Player player) {
-        return checkDropRequirements(drop, player, true);
-    }
-
-    /**
      * Checks if the player has the required advancement.
      */
-    private static boolean checkAdvancementRequirement(CustomDropEntry drop, Player player) {
+    private static boolean hasAdvancement(Player player, String advancementId) {
         if (!(player instanceof ServerPlayer)) {
             return false;
         }
 
         ServerPlayer serverPlayer = (ServerPlayer) player;
-        ResourceLocation advancementId = new ResourceLocation(drop.getRequiredAdvancement());
-        Advancement advancement = serverPlayer.server.getAdvancements().getAdvancement(advancementId);
+        ResourceLocation advancementLocation = new ResourceLocation(advancementId);
+        Advancement advancement = serverPlayer.getServer().getAdvancements().getAdvancement(advancementLocation);
 
         return advancement != null && serverPlayer.getAdvancements().getOrStartProgress(advancement).isDone();
     }
@@ -631,13 +779,9 @@ public class LootEventHandler {
     /**
      * Checks if the player has the required effect.
      */
-    private static boolean checkEffectRequirement(CustomDropEntry drop, Player player) {
-        if (player == null) {
-            return false;
-        }
-
-        ResourceLocation effectId = new ResourceLocation(drop.getRequiredEffect());
-        Holder<MobEffect> effectHolder = ForgeRegistries.MOB_EFFECTS.getHolder(effectId).orElse(null);
+    private static boolean hasEffect(Player player, String effectId) {
+        ResourceLocation effectLocation = new ResourceLocation(effectId);
+        Holder<MobEffect> effectHolder = ForgeRegistries.MOB_EFFECTS.getHolder(effectLocation).orElse(null);
 
         return effectHolder != null && player.hasEffect(effectHolder.value());
     }
@@ -645,167 +789,115 @@ public class LootEventHandler {
     /**
      * Checks if the player has the required equipment.
      */
-    private static boolean checkEquipmentRequirement(CustomDropEntry drop, Player player) {
-        if (player == null) {
-            return false;
-        }
-
-        ResourceLocation itemId = new ResourceLocation(drop.getRequiredEquipment());
-        Item requiredItem = ForgeRegistries.ITEMS.getValue(itemId);
+    private static boolean hasEquipment(Player player, String equipmentId) {
+        ResourceLocation itemLocation = new ResourceLocation(equipmentId);
+        Item requiredItem = ForgeRegistries.ITEMS.getValue(itemLocation);
 
         if (requiredItem == null) {
             return false;
         }
 
-        // Check all equipment slots
-        for (ItemStack stack : player.getArmorSlots()) {
-            if (stack.getItem() == requiredItem) {
+        // Check main hand
+        if (player.getMainHandItem().getItem() == requiredItem) {
+            return true;
+        }
+
+        // Check off hand
+        if (player.getOffhandItem().getItem() == requiredItem) {
+            return true;
+        }
+
+        // Check armor slots
+        for (ItemStack armorStack : player.getArmorSlots()) {
+            if (armorStack.getItem() == requiredItem) {
                 return true;
             }
         }
 
-        // Check main hand and offhand
-        return player.getMainHandItem().getItem() == requiredItem ||
-                player.getOffhandItem().getItem() == requiredItem;
+        return false;
     }
 
     /**
-     * Checks if the player is in the required dimension.
+     * Checks if the weather condition is met.
      */
-    private static boolean checkDimensionRequirement(CustomDropEntry drop, Player player) {
-        if (player == null) {
+    private static boolean checkWeather(Player player, String weatherCondition) {
+        if (player.level().isClientSide) {
             return false;
         }
 
-        ResourceLocation dimensionId = new ResourceLocation(drop.getRequiredDimension());
-        ResourceLocation playerDimension = player.level().dimension().location();
-
-        return dimensionId.equals(playerDimension);
-    }
-
-    /**
-     * Checks if the player is in the required biome.
-     */
-    private static boolean checkBiomeRequirement(CustomDropEntry drop, Player player) {
-        if (player == null) {
-            return false;
-        }
-
-        ResourceLocation biomeId = new ResourceLocation(drop.getRequiredBiome());
-        Holder<Biome> playerBiome = player.level().getBiome(player.blockPosition());
-
-        return playerBiome.is(biomeId);
-    }
-
-    /**
-     * Checks if the weather requirement is met.
-     */
-    private static boolean checkWeatherRequirement(CustomDropEntry drop, Player player) {
-        if (player == null) {
-            return false;
-        }
-
-        String requiredWeather = drop.getRequiredWeather().toLowerCase();
-        boolean isRaining = player.level().isRaining();
-        boolean isThundering = player.level().isThundering();
-
-        switch (requiredWeather) {
+        switch (weatherCondition.toLowerCase()) {
             case "clear":
-                return !isRaining && !isThundering;
+                return !player.level().isRaining() && !player.level().isThundering();
             case "rain":
-                return isRaining && !isThundering;
+                return player.level().isRaining() && !player.level().isThundering();
             case "thunder":
-                return isThundering;
+                return player.level().isThundering();
             default:
-                return true; // Invalid weather requirement, allow drop
+                return false;
         }
     }
 
     /**
-     * Checks if the time requirement is met.
+     * Checks if the time condition is met.
      */
-    private static boolean checkTimeRequirement(CustomDropEntry drop, Player player) {
-        if (player == null) {
-            return false;
-        }
-
-        String requiredTime = drop.getRequiredTime().toLowerCase();
-        long dayTime = player.level().getDayTime() % 24000;
-
-        switch (requiredTime) {
+    private static boolean checkTime(Player player, String timeRequirement) {
+        long time = player.level().getDayTime() % 24000;
+        switch (timeRequirement.toLowerCase()) {
             case "day":
-                return dayTime >= 1000 && dayTime < 13000;
+                return time >= 0 && time < 12000;
             case "night":
-                return dayTime >= 13000 || dayTime < 1000;
+                return time >= 12000 && time < 24000;
             case "dawn":
-                return dayTime >= 23000 || dayTime < 1000;
+                return time >= 23000 || time < 1000;
             case "dusk":
-                return dayTime >= 12000 && dayTime < 14000;
+                return time >= 11000 && time < 13000;
             default:
-                return true; // Invalid time requirement, allow drop
+                return false;
         }
     }
 
     /**
-     * Executes a command with player and entity context.
+     * Checks if the dimension condition is met.
      */
-    private static void executeCommand(String command, ServerPlayer player, LivingEntity entity) {
-        executeDropCommand(command, player, entity, null, 1);
+    private static boolean checkDimension(Player player, String dimensionId) {
+        ResourceLocation currentDimension = player.level().dimension().location();
+        ResourceLocation requiredDimension = new ResourceLocation(dimensionId);
+        return currentDimension.equals(requiredDimension);
     }
 
     /**
-     * Executes a drop command with full context including item and amount.
+     * Checks if the biome condition is met.
      */
-    private static void executeDropCommand(String command, ServerPlayer player, LivingEntity entity, CustomDropEntry drop, int amount) {
-        try {
-            MinecraftServer server = player.getServer();
-            if (server == null) {
-                return;
-            }
+    private static boolean checkBiome(Player player, String biomeId) {
+        ResourceLocation requiredBiome = new ResourceLocation(biomeId);
+        Holder<Biome> currentBiome = player.level().getBiome(player.blockPosition());
+        return currentBiome.is(requiredBiome);
+    }
 
-            ServerLevel level = (ServerLevel) entity.level();
-            Vec3 entityPos = entity.position();
-            Vec2 entityRotation = new Vec2(entity.getXRot(), entity.getYRot());
+    /**
+     * Replaces placeholders in commands.
+     */
+    private static String replacePlaceholders(String command, ServerPlayer player, LivingEntity entity) {
+        String result = command;
 
-            CommandSourceStack commandSource = new CommandSourceStack(
-                    server,
-                    entityPos,
-                    entityRotation,
-                    level,
-                    4,
-                    entity.getName().getString(),
-                    entity.getDisplayName(),
-                    server,
-                    entity
-            );
+        // Player placeholders
+        result = result.replace("{player}", player.getName().getString());
+        result = result.replace("{player_x}", String.valueOf((int) player.getX()));
+        result = result.replace("{player_y}", String.valueOf((int) player.getY()));
+        result = result.replace("{player_z}", String.valueOf((int) player.getZ()));
+        result = result.replace("{player_uuid}", player.getUUID().toString());
 
-            // Replace placeholders
-            String entityName = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
-            String itemName = "unknown_item";
-            if (drop != null && drop.getItemId() != null) {
-                // Extract just the item name from the full ID (e.g., "minecraft:diamond" -> "diamond")
-                String fullId = drop.getItemId();
-                itemName = fullId.contains(":") ? fullId.substring(fullId.lastIndexOf(":") + 1) : fullId;
-            }
+        // Entity placeholders
+        result = result.replace("{entity_x}", String.valueOf((int) entity.getX()));
+        result = result.replace("{entity_y}", String.valueOf((int) entity.getY()));
+        result = result.replace("{entity_z}", String.valueOf((int) entity.getZ()));
+        result = result.replace("{entity_type}", ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString());
+        result = result.replace("{entity_uuid}", entity.getUUID().toString());
 
-            String processedCommand = command
-                    .replace("%player%", player.getName().getString())
-                    .replace("@killer", player.getName().getString())
-                    .replace("%entity%", entityName)
-                    .replace("@entity", entityName)
-                    .replace("@item", itemName)
-                    .replace("%item%", itemName)
-                    .replace("@amount", String.valueOf(amount))
-                    .replace("%amount%", String.valueOf(amount))
-                    .replace("%x%", String.valueOf((int) entity.getX()))
-                    .replace("%y%", String.valueOf((int) entity.getY()))
-                    .replace("%z%", String.valueOf((int) entity.getZ()));
+        // Special placeholders
+        result = result.replace("@killer", player.getName().getString());
+        result = result.replace("@player", player.getName().getString());
 
-            server.getCommands().performPrefixedCommand(commandSource, processedCommand);
-            logDebug("Executed command: {}", processedCommand);
-
-        } catch (Exception e) {
-            LOGGER.error("Failed to execute command '{}': {}", command, e.getMessage());
-        }
+        return result;
     }
 }

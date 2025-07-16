@@ -2,12 +2,7 @@ package net.poe.entitylootdrops.lootdrops.model;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
-/**
- * Represents a custom drop entry for hostile mobs.
- * This is the base class for all drop configurations.
- */
 public class CustomDropEntry {
     private String itemId;              // The Minecraft item ID (e.g., "minecraft:diamond")
     private float dropChance;           // Percentage chance to drop (0-100)
@@ -25,6 +20,7 @@ public class CustomDropEntry {
     private float commandChance;        // Percentage chance to execute the command (0-100)
     private String dropCommand;         // Command to execute only when the item actually drops
     private float dropCommandChance;    // Percentage chance to execute the drop command (0-100)
+    private int commandCoolDown = 0;    // Cooldown in seconds before command can be executed again
     private String _comment;            // Comment for documentation in the JSON file
     private boolean requirePlayerKill = true; // Default to true for backward compatibility
     private boolean allowDefaultDrops = true; // Default to true for backward compatibility
@@ -39,9 +35,13 @@ public class CustomDropEntry {
     public CustomDropEntry() {
         this.commandChance = 100.0f; // Default to 100% if command is specified
         this.dropCommandChance = 100.0f; // Default to 100% if drop command is specified
+        this.requirePlayerKill = true; // Default to true for backward compatibility
+        this.allowDefaultDrops = true; // Default to true for backward compatibility
+        this.allowModIDs = new ArrayList<>();
         this.extraDropChance = 0.0f;
         this.extraAmountMin = 1;
         this.extraAmountMax = 1;
+        this.commandCoolDown = 0; // Default to no cooldown
     }
 
     /**
@@ -52,7 +52,7 @@ public class CustomDropEntry {
     }
 
     /**
-     * Constructor for a drop with NBT data.
+     * Constructor with NBT data.
      */
     public CustomDropEntry(String itemId, float dropChance, int minAmount, int maxAmount, String nbtData) {
         this.itemId = itemId;
@@ -60,14 +60,15 @@ public class CustomDropEntry {
         this.minAmount = minAmount;
         this.maxAmount = maxAmount;
         this.nbtData = nbtData;
-        this.commandChance = 100.0f;
-        this.dropCommandChance = 100.0f;
-        this.requirePlayerKill = true;
-        this.allowDefaultDrops = true;
+        this.commandChance = 100.0f; // Default to 100% if command is specified
+        this.dropCommandChance = 100.0f; // Default to 100% if drop command is specified
+        this.requirePlayerKill = true; // Default to true for backward compatibility
+        this.allowDefaultDrops = true; // Default to true for backward compatibility
         this.allowModIDs = new ArrayList<>();
         this.extraDropChance = 0.0f;
         this.extraAmountMin = 1;
         this.extraAmountMax = 1;
+        this.commandCoolDown = 0; // Default to no cooldown
     }
 
     // Getters
@@ -87,6 +88,7 @@ public class CustomDropEntry {
     public float getCommandChance() { return commandChance; }
     public String getDropCommand() { return dropCommand; }
     public float getDropCommandChance() { return dropCommandChance; }
+    public int getCommandCoolDown() { return commandCoolDown; }
     public boolean isRequirePlayerKill() { return requirePlayerKill; }
     public boolean isAllowDefaultDrops() { return allowDefaultDrops; }
     public List<String> getAllowModIDs() { return allowModIDs; }
@@ -111,6 +113,7 @@ public class CustomDropEntry {
     public void setCommandChance(float commandChance) { this.commandChance = commandChance; }
     public void setDropCommand(String dropCommand) { this.dropCommand = dropCommand; }
     public void setDropCommandChance(float dropCommandChance) { this.dropCommandChance = dropCommandChance; }
+    public void setCommandCoolDown(int commandCoolDown) { this.commandCoolDown = commandCoolDown; }
     public void setRequirePlayerKill(boolean requirePlayerKill) { this.requirePlayerKill = requirePlayerKill; }
     public void setAllowDefaultDrops(boolean allowDefaultDrops) { this.allowDefaultDrops = allowDefaultDrops; }
     public void setAllowModIDs(List<String> allowModIDs) { this.allowModIDs = allowModIDs != null ? allowModIDs : new ArrayList<>(); }
@@ -119,7 +122,9 @@ public class CustomDropEntry {
     public void setExtraAmountMin(int extraAmountMin) { this.extraAmountMin = extraAmountMin; }
     public void setExtraAmountMax(int extraAmountMax) { this.extraAmountMax = extraAmountMax; }
 
-    // Helper methods
+    // Utility methods
+    public boolean hasCommand() { return command != null && !command.isEmpty(); }
+    public boolean hasDropCommand() { return dropCommand != null && !dropCommand.isEmpty(); }
     public boolean hasNbtData() { return nbtData != null && !nbtData.isEmpty(); }
     public boolean hasRequiredAdvancement() { return requiredAdvancement != null && !requiredAdvancement.isEmpty(); }
     public boolean hasRequiredEffect() { return requiredEffect != null && !requiredEffect.isEmpty(); }
@@ -128,6 +133,5 @@ public class CustomDropEntry {
     public boolean hasRequiredTime() { return requiredTime != null && !requiredTime.isEmpty(); }
     public boolean hasRequiredDimension() { return requiredDimension != null && !requiredDimension.isEmpty(); }
     public boolean hasRequiredBiome() { return requiredBiome != null && !requiredBiome.isEmpty(); }
-    public boolean hasCommand() { return command != null && !command.isEmpty(); }
-    public boolean hasDropCommand() { return dropCommand != null && !dropCommand.isEmpty(); }
+    public boolean hasCommandCoolDown() { return commandCoolDown > 0; }
 }
