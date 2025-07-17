@@ -34,6 +34,7 @@ public class EventConfig {
         private List<String> allowedMods = new ArrayList<>();
         private List<String> blockedMods = new ArrayList<>();
         private double dropChanceMultiplier = 0.5; // 50% chance for extra drops
+        private double doubleDropChanceMultiplier = 2.0; // 2x multiplier for double drops
         private String comment = "Event configuration for EntityLootDrops mod";
 
         public EventConfigData() {
@@ -71,6 +72,9 @@ public class EventConfig {
 
         public double getDropChanceMultiplier() { return dropChanceMultiplier; }
         public void setDropChanceMultiplier(double dropChanceMultiplier) { this.dropChanceMultiplier = dropChanceMultiplier; }
+
+        public double getDoubleDropChanceMultiplier() { return doubleDropChanceMultiplier; }
+        public void setDoubleDropChanceMultiplier(double doubleDropChanceMultiplier) { this.doubleDropChanceMultiplier = doubleDropChanceMultiplier; }
 
         public String getComment() { return comment; }
         public void setComment(String comment) { this.comment = comment; }
@@ -127,46 +131,30 @@ public class EventConfig {
         // Ensure directory exists
         Files.createDirectories(configFile.getParent());
 
-        EventConfigData defaultConfig = new EventConfigData();
-        defaultConfig.setComment("Event configuration for EntityLootDrops mod - Controls how drop events affect different mods");
-
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(defaultConfig);
-
-        // Add comprehensive comments to the JSON
-        String enhancedJson = json.replace(
-                "\"comment\":",
-                "// ========================================\n" +
-                        "// EntityLootDrops - Event Configuration\n" +
-                        "// ========================================\n" +
-                        "//\n" +
-                        "// This file controls how drop chance and double drops events work\n" +
-                        "// with different mods and vanilla Minecraft.\n" +
-                        "//\n" +
-                        "// EVENT SETTINGS:\n" +
-                        "// enableDropChanceEvent: Allow drop chance events to be activated\n" +
-                        "// enableDoubleDropsEvent: Allow double drops events to be activated\n" +
-                        "//\n" +
-                        "// MOD FILTERING:\n" +
-                        "// affectVanillaDrops: Whether events affect vanilla Minecraft drops\n" +
-                        "// affectModdedDrops: Whether events affect drops from other mods\n" +
-                        "// allowedMods: List of mod IDs that events can affect (empty = all mods allowed)\n" +
-                        "// blockedMods: List of mod IDs that events should never affect\n" +
-                        "//\n" +
-                        "// EVENT PARAMETERS:\n" +
-                        "// dropChanceMultiplier: Chance multiplier for drop chance events (0.5 = 50% chance)\n" +
-                        "//\n" +
-                        "// POPULAR MOD IDs:\n" +
-                        "// - minecraft (vanilla)\n" +
-                        "// - mmorpg (Mine and Slash)\n" +
-                        "// - age_of_exile\n" +
-                        "// - dungeons_gear\n" +
-                        "// - reliquary\n" +
-                        "// - create\n" +
-                        "// - immersiveengineering\n" +
-                        "//\n" +
-                        "\"comment\":"
-        );
+        // Create enhanced JSON with detailed comments
+        String enhancedJson = """
+            {
+              "comment": "Event configuration for EntityLootDrops mod",
+              "enableDropChanceEvent": true,
+              "enableDoubleDropsEvent": true,
+              "affectVanillaDrops": true,
+              "affectModdedDrops": true,
+              "dropChanceMultiplier": 0.5,
+              "doubleDropChanceMultiplier": 2.0,
+              "allowedMods": [
+                "minecraft",
+                "mmorpg",
+                "age_of_exile",
+                "mine_and_slash",
+                "dungeons_gear",
+                "reliquary"
+              ],
+              "blockedMods": [
+                "create",
+                "immersiveengineering"
+              ]
+            }
+            """;
 
         Files.writeString(configFile, enhancedJson);
         LOGGER.info("Created EventConfig.json with comprehensive documentation");
@@ -219,6 +207,13 @@ public class EventConfig {
      */
     public static double getDropChanceMultiplier() {
         return config.getDropChanceMultiplier();
+    }
+
+    /**
+     * Gets the double drops multiplier.
+     */
+    public static double getDoubleDropChanceMultiplier() {
+        return config.getDoubleDropChanceMultiplier();
     }
 
     /**

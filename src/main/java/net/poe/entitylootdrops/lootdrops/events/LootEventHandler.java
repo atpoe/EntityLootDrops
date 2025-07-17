@@ -305,32 +305,44 @@ public class LootEventHandler {
      * Applies drop events to existing drops.
      */
     private static void applyDropEvents(LivingDropsEvent event) {
-        // If double drops is active, double all drops
+        // If double drops is active, multiply all drops by the configured amount
         if (LootConfig.isDoubleDropsActive()) {
-            List<ItemEntity> doubledDrops = new ArrayList<>();
+            double multiplier = EventConfig.getDoubleDropChanceMultiplier();
+
+            // If multiplier is 1 or less, no additional drops needed
+            if (multiplier <= 1.0) {
+                return;
+            }
+
+            List<ItemEntity> additionalDrops = new ArrayList<>();
 
             event.getDrops().forEach(itemEntity -> {
                 ItemStack originalStack = itemEntity.getItem();
                 ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(originalStack.getItem());
-                if (itemId != null) {
-                    ItemStack duplicateStack = new ItemStack(originalStack.getItem(), originalStack.getCount());
-                    if (originalStack.getTag() != null) {
-                        duplicateStack.setTag(originalStack.getTag().copy());
-                    }
+                if (itemId != null && EventConfig.shouldAffectMod(itemId.getNamespace())) {
+                    // Create (multiplier - 1) additional copies since we already have the original
+                    int additionalCopies = (int) (multiplier - 1);
 
-                    ItemEntity duplicateEntity = new ItemEntity(
-                            itemEntity.level(),
-                            itemEntity.getX(),
-                            itemEntity.getY(),
-                            itemEntity.getZ(),
-                            duplicateStack
-                    );
-                    duplicateEntity.setDeltaMovement(itemEntity.getDeltaMovement());
-                    doubledDrops.add(duplicateEntity);
+                    for (int i = 0; i < additionalCopies; i++) {
+                        ItemStack duplicateStack = new ItemStack(originalStack.getItem(), originalStack.getCount());
+                        if (originalStack.getTag() != null) {
+                            duplicateStack.setTag(originalStack.getTag().copy());
+                        }
+
+                        ItemEntity duplicateEntity = new ItemEntity(
+                                itemEntity.level(),
+                                itemEntity.getX(),
+                                itemEntity.getY(),
+                                itemEntity.getZ(),
+                                duplicateStack
+                        );
+                        duplicateEntity.setDeltaMovement(itemEntity.getDeltaMovement());
+                        additionalDrops.add(duplicateEntity);
+                    }
                 }
             });
 
-            event.getDrops().addAll(doubledDrops);
+            event.getDrops().addAll(additionalDrops);
         }
     }
 

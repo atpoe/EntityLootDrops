@@ -2,6 +2,7 @@ package net.poe.entitylootdrops.lootdrops.config;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -17,6 +18,10 @@ import org.apache.logging.log4j.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 
 import net.poe.entitylootdrops.lootdrops.config.EventConfig;
@@ -151,11 +156,12 @@ public class LootConfigLoader {
             Path eventDropsDir = lootDropsDir.resolve(EVENT_DROPS_DIR);
             if (Files.exists(eventDropsDir)) {
                 LOGGER.info("Loading event drops from: {}", eventDropsDir);
-                Files.list(eventDropsDir)
+                Files.walk(eventDropsDir, 1)
                         .filter(Files::isDirectory)
+                        .filter(path -> !path.equals(eventDropsDir))
                         .forEach(eventDir -> {
                             String eventName = eventDir.getFileName().toString();
-                            LOGGER.info("Loading event drops for event: {}", eventName);
+                            LOGGER.info("Loading event drops for: {}", eventName);
                             loadDropsFromDirectory(eventDir, eventName);
                         });
             }
@@ -166,24 +172,22 @@ public class LootConfigLoader {
     }
 
     /**
-     * Loads drops from a specific directory (either normal or event-specific).
+     * Loads drops from a specific directory.
      */
     private void loadDropsFromDirectory(Path directory, String dirKey) {
         try {
-            LOGGER.info("Loading drops from directory: {} (key: {})", directory, dirKey);
-
-            // Load global drops (JSON files recursively, excluding Mobs folders and messages.json)
-            List<CustomDropEntry> globalDrops = loadGlobalDropsFromCategoryDirectory(directory);
-            if (!globalDrops.isEmpty()) {
-                configManager.setHostileDrops(dirKey, globalDrops);
-                LOGGER.info("Loaded {} hostile drops for category: {}", globalDrops.size(), dirKey);
+            // Load general drops (not in Mobs subdirectory)
+            List<CustomDropEntry> generalDrops = loadGeneralDropsFromDirectory(directory);
+            if (!generalDrops.isEmpty()) {
+                configManager.setHostileDrops(dirKey, generalDrops);
+                LOGGER.info("Loaded {} general drops for {}", generalDrops.size(), dirKey);
             }
 
             // Load entity-specific drops from Mobs directories
             List<EntityDropEntry> entityDrops = loadEntityDropsFromMobsDirectories(directory);
             if (!entityDrops.isEmpty()) {
                 configManager.setEntityDrops(dirKey, entityDrops);
-                LOGGER.info("Loaded {} entity drops for category: {}", entityDrops.size(), dirKey);
+                LOGGER.info("Loaded {} entity drops for {}", entityDrops.size(), dirKey);
             }
 
         } catch (Exception e) {
@@ -192,37 +196,39 @@ public class LootConfigLoader {
     }
 
     /**
-     * Loads global drops from JSON files recursively, excluding Mobs folders.
+     * Loads general (non-entity-specific) drops from a directory.
      */
-    private List<CustomDropEntry> loadGlobalDropsFromCategoryDirectory(Path categoryDir) {
+    private List<CustomDropEntry> loadGeneralDropsFromDirectory(Path directory) {
         List<CustomDropEntry> allDrops = new ArrayList<>();
 
         try {
-            Files.walk(categoryDir)
+            Files.walk(directory, 1)
                     .filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".json"))
-                    .filter(path -> !path.getFileName().toString().equals(MESSAGES_FILE))
                     .filter(path -> !isInMobsDirectory(path))
                     .forEach(jsonFile -> {
                         try {
                             String json = new String(Files.readAllBytes(jsonFile));
-                            if (json.trim().isEmpty()) return;
+                            if (json.trim().isEmpty()) {
+                                LOGGER.warn("Empty JSON file: {}", jsonFile);
+                                return;
+                            }
 
                             Gson gson = new Gson();
                             CustomDropEntry[] drops = gson.fromJson(json, CustomDropEntry[].class);
                             if (drops != null) {
                                 for (CustomDropEntry drop : drops) {
-                                    if (drop != null && drop.getItemId() != null) {
+                                    if (drop != null) {
                                         allDrops.add(drop);
                                     }
                                 }
                             }
                         } catch (Exception e) {
-                            LOGGER.error("Failed to load drops from file: {}", jsonFile, e);
+                            LOGGER.error("Failed to load general drops from file: {}", jsonFile, e);
                         }
                     });
         } catch (Exception e) {
-            LOGGER.error("Failed to walk directory: {}", categoryDir, e);
+            LOGGER.error("Failed to walk directory for general drops: {}", directory, e);
         }
 
         return allDrops;
@@ -294,25 +300,163 @@ public class LootConfigLoader {
     }
 
     /**
-     * Loads custom message configurations.
+     * Loads custom message configurations with support for nested structure.
      */
     private void loadMessages() {
         try {
             Path messagesFile = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, MESSAGES_FILE);
-            if (Files.exists(messagesFile)) {
-                String json = new String(Files.readAllBytes(messagesFile));
-                if (!json.trim().isEmpty()) {
-                    Gson gson = new GsonBuilder().setPrettyPrinting().create();
-                    Type type = new TypeToken<Map<String, String>>(){}.getType();
-                    Map<String, String> messages = gson.fromJson(json, type);
-                    if (messages != null) {
-                        configManager.setCustomMessages(messages);
-                        LOGGER.info("Loaded {} custom messages", messages.size());
+            if (!Files.exists(messagesFile)) {
+                LOGGER.info("Messages file does not exist, creating default: {}", messagesFile);
+                createDefaultMessagesFile(messagesFile);
+            }
+
+            String json = Files.readString(messagesFile, StandardCharsets.UTF_8);
+            if (json.trim().isEmpty()) {
+                LOGGER.warn("Messages file is empty: {}", messagesFile);
+                return;
+            }
+
+            LOGGER.debug("Loading messages from: {}", messagesFile);
+            LOGGER.debug("JSON content: {}", json);
+
+            try {
+                JsonElement jsonElement = JsonParser.parseString(json);
+                if (!jsonElement.isJsonObject()) {
+                    LOGGER.error("Messages file must contain a JSON object, but found: {}", jsonElement.getClass().getSimpleName());
+                    return;
+                }
+
+                JsonObject rootObject = jsonElement.getAsJsonObject();
+
+                // Load enable messages
+                if (rootObject.has("enable") && rootObject.get("enable").isJsonObject()) {
+                    JsonObject enableMessages = rootObject.getAsJsonObject("enable");
+                    Map<String, String> enableMap = new HashMap<>();
+
+                    for (Map.Entry<String, JsonElement> entry : enableMessages.entrySet()) {
+                        String eventName = entry.getKey();
+                        JsonElement value = entry.getValue();
+
+                        if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                            String message = value.getAsString();
+                            enableMap.put(eventName, message);
+                            eventManager.setEventEnableMessage(eventName, message);
+                            LOGGER.info("Loaded enable message for {}: {}", eventName, message);
+                        } else {
+                            LOGGER.warn("Skipping invalid enable message for '{}': expected string but found {}",
+                                    eventName, value.getClass().getSimpleName());
+                        }
                     }
                 }
+
+                // Load disable messages
+                if (rootObject.has("disable") && rootObject.get("disable").isJsonObject()) {
+                    JsonObject disableMessages = rootObject.getAsJsonObject("disable");
+                    Map<String, String> disableMap = new HashMap<>();
+
+                    for (Map.Entry<String, JsonElement> entry : disableMessages.entrySet()) {
+                        String eventName = entry.getKey();
+                        JsonElement value = entry.getValue();
+
+                        if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                            String message = value.getAsString();
+                            disableMap.put(eventName, message);
+                            eventManager.setEventDisableMessage(eventName, message);
+                            LOGGER.info("Loaded disable message for {}: {}", eventName, message);
+                        } else {
+                            LOGGER.warn("Skipping invalid disable message for '{}': expected string but found {}",
+                                    eventName, value.getClass().getSimpleName());
+                        }
+                    }
+                }
+
+                // Load other message types if present (drop chance, double drops, etc.)
+                loadOtherMessageTypes(rootObject);
+
+                LOGGER.info("Successfully loaded custom event messages");
+
+            } catch (JsonSyntaxException e) {
+                LOGGER.error("Invalid JSON syntax in messages file: {}", messagesFile);
+                LOGGER.error("JSON syntax error: {}", e.getMessage());
+                LOGGER.debug("File content: {}", json);
             }
+
+        } catch (IOException e) {
+            LOGGER.error("Failed to read messages file: {}", e.getMessage());
         } catch (Exception e) {
-            LOGGER.error("Failed to load custom messages", e);
+            LOGGER.error("Unexpected error loading custom messages", e);
+        }
+    }
+
+    /**
+     * Creates a default messages.json file with example messages.
+     */
+    private void createDefaultMessagesFile(Path messagesFile) throws IOException {
+        // Ensure directory exists
+        Files.createDirectories(messagesFile.getParent());
+
+        // Create default messages structure
+        Map<String, Object> defaultMessages = new HashMap<>();
+
+        // Default enable messages - using proper UTF-8 encoding
+        Map<String, String> enableMessages = new HashMap<>();
+        enableMessages.put("Winter", "§6[Events] §b[WINTER] Winter event has been enabled!");
+        enableMessages.put("Summer", "§6[Events] §e[SUMMER] Summer event has been enabled!");
+        enableMessages.put("Easter", "§6[Events] §d[EASTER] Easter event has been enabled!");
+        enableMessages.put("Halloween", "§6[Events] §c[HALLOWEEN] Halloween event has been enabled!");
+
+        // Default disable messages
+        Map<String, String> disableMessages = new HashMap<>();
+        disableMessages.put("Winter", "§6[Events] §7[WINTER] Winter event has been disabled!");
+        disableMessages.put("Summer", "§6[Events] §7[SUMMER] Summer event has been disabled!");
+        disableMessages.put("Easter", "§6[Events] §7[EASTER] Easter event has been disabled!");
+        disableMessages.put("Halloween", "§6[Events] §7[HALLOWEEN] Halloween event has been disabled!");
+
+        defaultMessages.put("enable", enableMessages);
+        defaultMessages.put("disable", disableMessages);
+
+        // Add drop chance and double drops messages
+        defaultMessages.put("drop_chance_enable", "§6[Events] §aIncreased drop chance event is now active!");
+        defaultMessages.put("drop_chance_disable", "§6[Events] §cIncreased drop chance event has been disabled!");
+        defaultMessages.put("double_drops_enable", "§6[Events] §aDouble drops event is now active!");
+        defaultMessages.put("double_drops_disable", "§6[Events] §cDouble drops event has been disabled!");
+
+        // Write to file with proper UTF-8 encoding
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String json = gson.toJson(defaultMessages);
+
+        Files.writeString(messagesFile, json, StandardCharsets.UTF_8);
+        LOGGER.info("Created default messages.json file");
+    }
+
+    /**
+     * Loads other message types like drop chance and double drops messages.
+     */
+    private void loadOtherMessageTypes(JsonObject rootObject) {
+        // Load drop chance messages
+        if (rootObject.has("drop_chance_enable") && rootObject.get("drop_chance_enable").isJsonPrimitive()) {
+            String message = rootObject.get("drop_chance_enable").getAsString();
+            eventManager.setDropChanceEnableMessage(message);
+            LOGGER.info("Loaded drop chance enable message: {}", message);
+        }
+
+        if (rootObject.has("drop_chance_disable") && rootObject.get("drop_chance_disable").isJsonPrimitive()) {
+            String message = rootObject.get("drop_chance_disable").getAsString();
+            eventManager.setDropChanceDisableMessage(message);
+            LOGGER.info("Loaded drop chance disable message: {}", message);
+        }
+
+        // Load double drops messages
+        if (rootObject.has("double_drops_enable") && rootObject.get("double_drops_enable").isJsonPrimitive()) {
+            String message = rootObject.get("double_drops_enable").getAsString();
+            eventManager.setDoubleDropsEnableMessage(message);
+            LOGGER.info("Loaded double drops enable message: {}", message);
+        }
+
+        if (rootObject.has("double_drops_disable") && rootObject.get("double_drops_disable").isJsonPrimitive()) {
+            String message = rootObject.get("double_drops_disable").getAsString();
+            eventManager.setDoubleDropsDisableMessage(message);
+            LOGGER.info("Loaded double drops disable message: {}", message);
         }
     }
 }
