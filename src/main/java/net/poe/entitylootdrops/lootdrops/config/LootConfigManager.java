@@ -115,6 +115,13 @@ public class LootConfigManager {
     }
 
     /**
+     * Gets entity drops for a specific event.
+     */
+    public List<EntityDropEntry> getEventEntityDrops(String eventName) {
+        return entityDrops.getOrDefault(eventName, Collections.emptyList());
+    }
+
+    /**
      * Gets all available event names.
      */
     public Set<String> getAllEventNames() {

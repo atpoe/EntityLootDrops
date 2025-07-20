@@ -14,20 +14,11 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
-import net.poe.entitylootdrops.blockdrops.BlockConfig;
-import net.poe.entitylootdrops.blockdrops.events.BlockEventHandler;
-import net.poe.entitylootdrops.blockdrops.regeneration.BlockRegenerationManager;
 import net.poe.entitylootdrops.config.ModConfig;
-import net.poe.entitylootdrops.fishing.config.FishingConfig;
-import net.poe.entitylootdrops.fishing.events.FishingEventHandler;
 import net.poe.entitylootdrops.gui.ConfigScreen;
 import net.poe.entitylootdrops.lootdrops.LootConfig;
 import net.poe.entitylootdrops.lootdrops.events.LootEventHandler;
-import net.poe.entitylootdrops.recipes.RecipeConfig;
-import net.poe.entitylootdrops.recipes.events.RecipeEventHandler;
-import net.poe.entitylootdrops.recipes.registration.RecipeRegistrationManager;
-import net.poe.entitylootdrops.adventure.AdventureModeConfigLoader;
-import net.poe.entitylootdrops.adventure.AdventureModeEventHandler;
+
 
 /**
  * Main mod class for the EntityLootDrops mod.
@@ -47,11 +38,6 @@ public class EntityLootDrops {
      */
     public static final Logger LOGGER = LogManager.getLogger();
 
-    /**
-     * Recipe registration manager instance
-     */
-    private static RecipeRegistrationManager recipeRegistrationManager;
-
     public static Logger getLogger() {
         return LOGGER;
     }
@@ -68,21 +54,6 @@ public class EntityLootDrops {
         // Register the loot event handler to receive entity drop events
         MinecraftForge.EVENT_BUS.register(LootEventHandler.class);
 
-        // Register the block event handler to receive block-related events
-        MinecraftForge.EVENT_BUS.register(BlockEventHandler.class);
-
-        // Register the recipe event handler to receive crafting events
-        MinecraftForge.EVENT_BUS.register(RecipeEventHandler.class);
-
-        // Register the fishing event handler to receive fishing-related events
-        MinecraftForge.EVENT_BUS.register(FishingEventHandler.class);
-        LOGGER.info("Registered FishingEventHandler");
-
-        // Register the Adventure Mode event handler
-        AdventureModeEventHandler.register();
-
-        // Load Adventure Mode config
-        AdventureModeConfigLoader.loadConfig(java.nio.file.Paths.get("config/EntityLootDrops"));
 
         // Register the setup event
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
@@ -92,19 +63,6 @@ public class EntityLootDrops {
         // Load the initial configuration
         // This creates default files if they don't exist
         LootConfig.loadConfig(); // Uses the refactored LootConfig
-        BlockConfig.loadConfig(); // Uses the refactored BlockConfig
-        RecipeConfig.loadConfig(); // Uses the new simplified RecipeConfig
-
-        // Initialize recipe registration manager
-        recipeRegistrationManager = new RecipeRegistrationManager(RecipeConfig.getConfigManager());
-
-        // Load fishing config
-        try {
-            FishingConfig.loadConfig(new File("config"));
-            LOGGER.info("Loaded FishingConfig");
-        } catch (Exception e) {
-            LOGGER.error("Failed to load FishingConfig: {}", e.getMessage());
-        }
 
         // Create all README files if ReadmeManager exists
         try {
@@ -156,52 +114,13 @@ public class EntityLootDrops {
         // Reload configuration when the server starts
         // This ensures any changes made to the config files are applied
         LootConfig.loadConfig();
-        BlockConfig.loadConfig();
-        RecipeConfig.loadConfig();
 
-        // Reload Adventure Mode config
-        AdventureModeConfigLoader.loadConfig(java.nio.file.Paths.get("config/EntityLootDrops"));
-
-        // Reload fishing config
-        try {
-            FishingConfig.loadConfig(new File("config"));
-            LOGGER.info("Reloaded FishingConfig");
-        } catch (Exception e) {
-            LOGGER.error("Failed to reload FishingConfig: {}", e.getMessage());
-        }
-
-        // Load block regeneration data from disk
-        try {
-            BlockRegenerationManager.loadRegenerationData();
-            int regeneratingCount = BlockRegenerationManager.getRegenerationCount();
-            if (regeneratingCount > 0) {
-                LOGGER.info("Loaded {} regenerating blocks from previous session", regeneratingCount);
-            } else {
-                LOGGER.info("No regenerating blocks found from previous session");
-            }
-        } catch (Exception e) {
-            LOGGER.error("Failed to load block regeneration data: {}", e.getMessage());
-        }
 
         // Log debug information about the loaded configuration
         LOGGER.info("Loaded {} normal drops", LootConfig.getNormalDrops().size());
         LOGGER.info("Loaded {} hostile drops", LootConfig.getNormalHostileDrops().size());
         LOGGER.info("Loaded {} event types", LootConfig.getEventDrops().size());
         LOGGER.info("Active events: {}", LootConfig.getActiveEvents());
-        LOGGER.info("Loaded {} block drop types", BlockConfig.getAvailableBlockEvents().size());
-        LOGGER.info("Active block events: {}", BlockConfig.getActiveBlockEvents());
-        LOGGER.info("Loaded {} custom recipes", RecipeConfig.getAllRecipes().size());
-        LOGGER.info("Loaded {} enabled custom recipes", RecipeConfig.getConfigManager().getEnabledRecipeCount());
-
-        // Log fishing drops
-        LOGGER.info("Loaded {} fishing drops", FishingConfig.getFishingDrops().size());
-        LOGGER.info("Loaded {} global fishing rewards", FishingConfig.getGlobalFishingRewards().size());
-
-        // Log block regeneration status
-        int currentRegenerating = BlockRegenerationManager.getRegenerationCount();
-        if (currentRegenerating > 0) {
-            LOGGER.info("Currently tracking {} regenerating blocks", currentRegenerating);
-        }
     }
 
     /**
@@ -214,29 +133,9 @@ public class EntityLootDrops {
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         LOGGER.info("Server stopping - saving persistent data...");
-
-        // Save block regeneration data to disk
-        try {
-            BlockRegenerationManager.saveRegenerationData();
-            int regeneratingCount = BlockRegenerationManager.getRegenerationCount();
-            if (regeneratingCount > 0) {
-                LOGGER.info("Saved {} regenerating blocks to disk", regeneratingCount);
-            } else {
-                LOGGER.info("No regenerating blocks to save");
-            }
-        } catch (Exception e) {
-            LOGGER.error("Failed to save block regeneration data: {}", e.getMessage());
-        }
-
         LOGGER.info("Server shutdown complete");
     }
 
-    /**
-     * Gets the recipe registration manager instance
-     */
-    public static RecipeRegistrationManager getRecipeRegistrationManager() {
-        return recipeRegistrationManager;
-    }
 
     /**
      * Forces regeneration of all example configuration files.

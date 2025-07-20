@@ -8,7 +8,7 @@ import java.nio.file.Path;
  * Creates the main README file for the EntityLootDrops mod.
  */
 public class MainReadmeCreator {
-    
+
     /**
      * Creates the main README file for the mod.
      */
@@ -26,27 +26,57 @@ public class MainReadmeCreator {
             readme.append("config/EntityLootDrops/\n");
             readme.append("  ├── Loot Drops/         # Entity loot drop configurations\n");
             readme.append("  │   ├── Normal Drops/   # Always active drops\n");
-            readme.append("  │   │   ├── Global_Hostile_Drops.json\n");
-            readme.append("  │   │   ├── Global_Hostile_Drops_Example.json\n");
+            readme.append("  │   │   ├── Global_Hostile_Drops.json (AUTO-REGENERATES if deleted)\n");
+            readme.append("  │   │   ├── Global_Hostile_Drops.example (comprehensive reference)\n");
+            readme.append("  │   │   ├── Custom_Drops_Example.json\n");
             readme.append("  │   │   └── Mobs/       # Entity-specific drops\n");
+            readme.append("  │   │       ├── Zombie_Example.json\n");
+            readme.append("  │   │       └── Skeleton_Example.json\n");
             readme.append("  │   └── Event Drops/    # Event-specific drops\n");
             readme.append("  │       ├── Winter/     # Winter event drops\n");
+            readme.append("  │       │   ├── Winter_Event_Drops_Example.json\n");
+            readme.append("  │       │   └── Mobs/\n");
             readme.append("  │       ├── Summer/     # Summer event drops\n");
             readme.append("  │       ├── Easter/     # Easter event drops\n");
             readme.append("  │       └── Halloween/  # Halloween event drops\n");
-            readme.append("  ├── Blocks/             # Block drop configurations\n");
-            readme.append("  ├── Recipes/            # Custom recipe configurations\n");
-            readme.append("  │   ├── Shaped/         # Shaped crafting recipes\n");
-            readme.append("  │   ├── Shapeless/      # Shapeless crafting recipes\n");
-            readme.append("  │   ├── Brewing/        # Brewing stand recipes\n");
-            readme.append("  │   ├── Furnace/        # Furnace/smelting recipes\n");
-            readme.append("  │   └── Smithing/       # Smithing table recipes\n");
-            readme.append("  ├── Fishing/            # Fishing drop configurations\n");
+            readme.append("  ├── Blocks/         # Block drop configurations\n");
+            readme.append("  │   ├── Global_Block_Drops.json\n");
+            readme.append("  │   ├── Block Types/   # Block-specific drops\n");
+            readme.append("  │   └── Event Drops/    # Event-specific drops\n");
+            readme.append("  ├── Fishing/         # Fishing drop configurations\n");
             readme.append("  │   ├── Global_Fishing_Rewards.json\n");
             readme.append("  │   ├── Conditional Drops/  # Weather/time-based drops\n");
             readme.append("  │   ├── Biome Drops/        # Biome-specific drops\n");
             readme.append("  │   └── Dimension Drops/    # Dimension-specific drops\n");
             readme.append("  └── messages.json       # Custom event messages\n\n");
+
+            readme.append("FILE MANAGEMENT SYSTEM:\n");
+            readme.append("======================\n");
+            readme.append("ON FIRST LOAD: All example files and directories are created automatically.\n\n");
+
+            readme.append("EXAMPLE FILES:\n");
+            readme.append("- Clean, simple examples for learning\n");
+            readme.append("- Safe to delete - will NOT regenerate automatically\n");
+            readme.append("- Can be renamed, edited, or replaced with custom files\n\n");
+
+            readme.append(".example FILES:\n");
+            readme.append("- Comprehensive reference files with ALL possible fields\n");
+            readme.append("- Use as templates for advanced configurations\n");
+            readme.append("- Safe to delete - will NOT regenerate automatically\n\n");
+
+            readme.append("MAIN CONFIG FILES (Auto-Regenerating):\n");
+            readme.append("- Global_Hostile_Drops.json: ONLY this file regenerates if deleted\n");
+            readme.append("- Other main config files vary by feature\n\n");
+
+            readme.append("CUSTOM FILE LOADING:\n");
+            readme.append("- ANY .json file in the correct directory will be loaded\n");
+            readme.append("- Rename, edit, or create new files freely\n");
+            readme.append("- Use /lootdrops reload to apply changes\n");
+            readme.append("- No server restart required!\n\n");
+
+            readme.append("REGENERATE EXAMPLES:\n");
+            readme.append("- Delete entire folders (like 'Loot Drops' or 'Mobs') to regenerate examples\n");
+            readme.append("- Individual example files will NOT regenerate\n\n");
 
             readme.append("Entity Loot Drops:\n");
             readme.append("-----------------\n");
@@ -64,7 +94,7 @@ public class MainReadmeCreator {
             readme.append("Commands:\n");
             readme.append("--------\n");
             readme.append("Entity Loot Drops:\n");
-            readme.append("  /lootdrops reload - Reload all configurations\n");
+            readme.append("  /lootdrops reload - Reload all configurations (loads ANY .json files)\n");
             readme.append("  /lootdrops event <name> <true|false> - Toggle event\n");
             readme.append("  /lootdrops event dropchance <true|false> - Toggle double drop chance\n");
             readme.append("  /lootdrops event doubledrops <true|false> - Toggle double drops\n");
@@ -103,10 +133,16 @@ public class MainReadmeCreator {
             readme.append("Method 3 - Set Amounts to 0 (Alternative):\n");
             readme.append("Set \"minAmount\": 0 and \"maxAmount\": 0\n\n");
 
-            readme.append("WHY NOT DELETE FILES?\n");
-            readme.append("- Main config files (like Global_Hostile_Drops.json) will regenerate\n");
+            readme.append("Method 4 - Rename the file extension:\n");
+            readme.append("Change .json to .json.disabled or .json.backup\n");
+            readme.append("(File will be ignored but preserved)\n\n");
+
+            readme.append("WHY NOT DELETE THE MAIN CONFIG FILES?\n");
+            readme.append("====================================\n");
+            readme.append("- Global_Hostile_Drops.json will regenerate automatically\n");
             readme.append("- You'll lose your custom configurations\n");
-            readme.append("- Example files are safe to delete and will regenerate with updates\n\n");
+            readme.append("- Example files are safe to delete (won't regenerate)\n");
+            readme.append("- Use disable methods above instead\n\n");
 
             readme.append("Configuration Tips:\n");
             readme.append("------------------\n");
@@ -116,10 +152,12 @@ public class MainReadmeCreator {
             readme.append("4. Use events for seasonal or temporary drops\n");
             readme.append("5. Test with debug logging enabled: /lootdrops debug true\n");
             readme.append("6. Use /lootdrops reload to apply changes without restarting\n");
-            readme.append("7. To disable drops: Use [] or set chances to 0 - DON'T delete main files!\n\n");
+            readme.append("7. Reference the .example files for all possible configuration options\n");
+            readme.append("8. Rename files to .json.disabled to temporarily disable them\n");
+            readme.append("9. Delete entire folders to regenerate example files\n\n");
 
             readme.append("Each directory contains its own README file with detailed instructions.\n");
-            
+
             Files.write(readmePath, readme.toString().getBytes());
         }
     }

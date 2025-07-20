@@ -72,6 +72,12 @@ public class LootConfigLoader {
         // Create directories if they don't exist
         createConfigDirectories();
 
+        // Create example files on first load
+        createExampleFiles();
+
+        // Check and regenerate Global_Hostile_Drops.json if needed
+        checkAndRegenerateGlobalHostileDrops();
+
         // Load EventConfig (this will create EventConfig.json if it doesn't exist)
         try {
             EventConfig.loadConfig();
@@ -131,6 +137,362 @@ public class LootConfigLoader {
             LOGGER.info("Configuration directories created successfully");
         } catch (Exception e) {
             LOGGER.error("Failed to create configuration directories", e);
+        }
+    }
+
+    /**
+     * Creates example files if directories are empty of JSON files.
+     */
+    private void createExampleFiles() {
+        LOGGER.info("Checking and creating example files...");
+
+        try {
+            // Check Normal Drops directory
+            Path normalDropsDir = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, NORMAL_DROPS_DIR);
+            if (isDirectoryEmptyOfJsonFiles(normalDropsDir)) {
+                createNormalDropsExamples();
+            }
+
+            // Check Normal Drops/Mobs directory
+            Path normalMobsDir = normalDropsDir.resolve(MOBS_DIR);
+            if (isDirectoryEmptyOfJsonFiles(normalMobsDir)) {
+                createNormalMobsExamples();
+            }
+
+            // Check Event Drops directories
+            Path eventDropsDir = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, EVENT_DROPS_DIR);
+            for (String eventType : EVENT_TYPES) {
+                Path eventDir = eventDropsDir.resolve(eventType);
+                if (isDirectoryEmptyOfJsonFiles(eventDir)) {
+                    createEventDropsExample(eventType);
+                }
+
+                Path eventMobsDir = eventDir.resolve(MOBS_DIR);
+                if (isDirectoryEmptyOfJsonFiles(eventMobsDir)) {
+                    createEventMobsExample(eventType);
+                }
+            }
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to create example files", e);
+        }
+    }
+
+    /**
+     * Checks if Global_Hostile_Drops.json exists and recreates it if deleted.
+     */
+    private void checkAndRegenerateGlobalHostileDrops() {
+        try {
+            Path globalHostileDropsFile = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, NORMAL_DROPS_DIR, "Global_Hostile_Drops.json");
+
+            if (!Files.exists(globalHostileDropsFile)) {
+                LOGGER.info("Global_Hostile_Drops.json not found, regenerating...");
+                createGlobalHostileDropsFile();
+            }
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to check/regenerate Global_Hostile_Drops.json", e);
+        }
+    }
+
+    /**
+     * Checks if a directory is empty of JSON files.
+     */
+    private boolean isDirectoryEmptyOfJsonFiles(Path directory) {
+        try {
+            if (!Files.exists(directory)) {
+                return true;
+            }
+
+            return Files.walk(directory, 1)
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".json"))
+                    .findFirst()
+                    .isEmpty();
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to check if directory is empty: {}", directory, e);
+            return false;
+        }
+    }
+
+    /**
+     * Creates example files for normal drops.
+     */
+    private void createNormalDropsExamples() {
+        LOGGER.info("Creating normal drops examples...");
+        createGlobalHostileDropsFile();
+    }
+
+    /**
+     * Creates the Global_Hostile_Drops.json file.
+     */
+    private void createGlobalHostileDropsFile() {
+        try {
+            Path globalFile = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, NORMAL_DROPS_DIR, "Global_Hostile_Drops.json");
+
+            String exampleJson = "[\n" +
+                    "  {\n" +
+                    "    \"requiredDimension\": \"minecraft:overworld\",\n" +
+                    "    \"itemId\": \"minecraft:diamond\",\n" +
+                    "    \"dropChance\": 5.0,\n" +
+                    "    \"minAmount\": 1,\n" +
+                    "    \"maxAmount\": 1,\n" +
+                    "    \"command\": \"effect give {player} minecraft:speed 10 1\",\n" +
+                    "    \"commandChance\": 100.0,\n" +
+                    "    \"commandCoolDown\": 300,\n" +
+                    "    \"_comment\": \"Speed effect on diamond drop\",\n" +
+                    "    \"requirePlayerKill\": true,\n" +
+                    "    \"extraDropChance\": 10.0,\n" +
+                    "    \"extraAmountMin\": 1,\n" +
+                    "    \"extraAmountMax\": 3\n" +
+                    "  }\n" +
+                    "]";
+
+            Files.writeString(globalFile, exampleJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created Global_Hostile_Drops.json");
+
+            // Also create the comprehensive example file
+            createGlobalHostileDropsExampleFile();
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to create Global_Hostile_Drops.json", e);
+        }
+    }
+
+    /**
+     * Creates the comprehensive Global_Hostile_Drops.example file with all possible fields.
+     */
+    private void createGlobalHostileDropsExampleFile() {
+        try {
+            Path exampleFile = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, NORMAL_DROPS_DIR, "Global_Hostile_Drops.example");
+
+            String exampleJson = "[\n" +
+                    "  {\n" +
+                    "    \"itemId\": \"minecraft:golden_apple\",\n" +
+                    "    \"dropChance\": 0.5,\n" +
+                    "    \"minAmount\": 1,\n" +
+                    "    \"maxAmount\": 1,\n" +
+                    "    \"nbtData\": \"{Enchantments:[{id:\\\"minecraft:sharpness\\\",lvl:5s}]}\",\n" +
+                    "    \"requiredAdvancement\": \"minecraft:story/mine_diamond\",\n" +
+                    "    \"requiredEffect\": \"minecraft:strength\",\n" +
+                    "    \"requiredEquipment\": \"minecraft:diamond_sword\",\n" +
+                    "    \"requiredWeather\": \"rain\",\n" +
+                    "    \"requiredTime\": \"night\",\n" +
+                    "    \"requiredDimension\": \"minecraft:overworld\",\n" +
+                    "    \"requiredBiome\": \"minecraft:forest\",\n" +
+                    "    \"command\": \"effect give {player} minecraft:regeneration 30 1\",\n" +
+                    "    \"commandChance\": 50.0,\n" +
+                    "    \"commandCoolDown\": 300,\n" +
+                    "    \"dropCommand\": \"playsound minecraft:entity.player.levelup player {player}\",\n" +
+                    "    \"dropCommandChance\": 100.0,\n" +
+                    "    \"_comment\": \"Comprehensive example with all possible fields\",\n" +
+                    "    \"requirePlayerKill\": true,\n" +
+                    "    \"allowDefaultDrops\": true,\n" +
+                    "    \"allowModIDs\": [\"examplemod:special_item\"],\n" +
+                    "    \"extraDropChance\": 10.0,\n" +
+                    "    \"extraAmountMin\": 1,\n" +
+                    "    \"extraAmountMax\": 3\n" +
+                    "  }\n" +
+                    "]";
+
+            Files.writeString(exampleFile, exampleJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created Global_Hostile_Drops.example");
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to create Global_Hostile_Drops.example", e);
+        }
+    }
+
+    /**
+     * Creates example files for normal mobs.
+     */
+    private void createNormalMobsExamples() {
+        LOGGER.info("Creating normal mobs examples...");
+
+        try {
+            Path mobsDir = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, NORMAL_DROPS_DIR, MOBS_DIR);
+
+            // Create Zombie example
+            Path zombieFile = mobsDir.resolve("Zombie_Example.json");
+            String zombieJson = "[\n" +
+                    "  {\n" +
+                    "    \"entityId\": \"minecraft:zombie\",\n" +
+                    "    \"itemId\": \"minecraft:iron_ingot\",\n" +
+                    "    \"dropChance\": 10.0,\n" +
+                    "    \"minAmount\": 1,\n" +
+                    "    \"maxAmount\": 2,\n" +
+                    "    \"_comment\": \"Iron ingot from zombies\",\n" +
+                    "    \"requirePlayerKill\": true\n" +
+                    "  }\n" +
+                    "]";
+
+            Files.writeString(zombieFile, zombieJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created Zombie_Example.json");
+
+            // Create Skeleton example
+            Path skeletonFile = mobsDir.resolve("Skeleton_Example.json");
+            String skeletonJson = "[\n" +
+                    "  {\n" +
+                    "    \"entityId\": \"minecraft:skeleton\",\n" +
+                    "    \"itemId\": \"minecraft:flint\",\n" +
+                    "    \"dropChance\": 15.0,\n" +
+                    "    \"minAmount\": 1,\n" +
+                    "    \"maxAmount\": 3,\n" +
+                    "    \"_comment\": \"Flint from skeletons\",\n" +
+                    "    \"requirePlayerKill\": false\n" +
+                    "  }\n" +
+                    "]";
+
+            Files.writeString(skeletonFile, skeletonJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created Skeleton_Example.json");
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to create normal mobs examples", e);
+        }
+    }
+
+    /**
+     * Creates example files for event drops.
+     */
+    private void createEventDropsExample(String eventType) {
+        LOGGER.info("Creating event drops example for: {}", eventType);
+
+        try {
+            Path eventDir = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, EVENT_DROPS_DIR, eventType);
+            Path exampleFile = eventDir.resolve(eventType + "_Event_Drops_Example.json");
+
+            String exampleJson = "";
+            switch (eventType) {
+                case "Winter":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"itemId\": \"minecraft:snowball\",\n" +
+                            "    \"dropChance\": 20.0,\n" +
+                            "    \"minAmount\": 2,\n" +
+                            "    \"maxAmount\": 5,\n" +
+                            "    \"_comment\": \"Winter event snowballs\",\n" +
+                            "    \"requirePlayerKill\": true\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+                case "Summer":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"itemId\": \"minecraft:sunflower\",\n" +
+                            "    \"dropChance\": 15.0,\n" +
+                            "    \"minAmount\": 1,\n" +
+                            "    \"maxAmount\": 2,\n" +
+                            "    \"_comment\": \"Summer event sunflowers\",\n" +
+                            "    \"requirePlayerKill\": true\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+                case "Easter":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"itemId\": \"minecraft:egg\",\n" +
+                            "    \"dropChance\": 25.0,\n" +
+                            "    \"minAmount\": 1,\n" +
+                            "    \"maxAmount\": 3,\n" +
+                            "    \"_comment\": \"Easter event eggs\",\n" +
+                            "    \"requirePlayerKill\": true\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+                case "Halloween":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"itemId\": \"minecraft:pumpkin\",\n" +
+                            "    \"dropChance\": 30.0,\n" +
+                            "    \"minAmount\": 1,\n" +
+                            "    \"maxAmount\": 2,\n" +
+                            "    \"_comment\": \"Halloween event pumpkins\",\n" +
+                            "    \"requirePlayerKill\": true\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+            }
+
+            Files.writeString(exampleFile, exampleJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created {}_Event_Drops_Example.json", eventType);
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to create event drops example for {}", eventType, e);
+        }
+    }
+
+    /**
+     * Creates example files for event mobs.
+     */
+    private void createEventMobsExample(String eventType) {
+        LOGGER.info("Creating event mobs example for: {}", eventType);
+
+        try {
+            Path eventMobsDir = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, EVENT_DROPS_DIR, eventType, MOBS_DIR);
+            Path exampleFile = eventMobsDir.resolve(eventType + "_Mob_Drops_Example.json");
+
+            String exampleJson = "";
+            switch (eventType) {
+                case "Winter":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"entityId\": \"minecraft:zombie\",\n" +
+                            "    \"itemId\": \"minecraft:ice\",\n" +
+                            "    \"dropChance\": 12.0,\n" +
+                            "    \"minAmount\": 1,\n" +
+                            "    \"maxAmount\": 2,\n" +
+                            "    \"_comment\": \"Winter event ice from zombie\",\n" +
+                            "    \"requirePlayerKill\": true\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+                case "Summer":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"entityId\": \"minecraft:skeleton\",\n" +
+                            "    \"itemId\": \"minecraft:melon_slice\",\n" +
+                            "    \"dropChance\": 18.0,\n" +
+                            "    \"minAmount\": 2,\n" +
+                            "    \"maxAmount\": 4,\n" +
+                            "    \"_comment\": \"Summer event melon from skeleton\",\n" +
+                            "    \"requirePlayerKill\": true\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+                case "Easter":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"entityId\": \"minecraft:chicken\",\n" +
+                            "    \"itemId\": \"minecraft:golden_egg\",\n" +
+                            "    \"dropChance\": 5.0,\n" +
+                            "    \"minAmount\": 1,\n" +
+                            "    \"maxAmount\": 1,\n" +
+                            "    \"_comment\": \"Easter event golden egg from chicken\",\n" +
+                            "    \"requirePlayerKill\": false\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+                case "Halloween":
+                    exampleJson = "[\n" +
+                            "  {\n" +
+                            "    \"entityId\": \"minecraft:zombie\",\n" +
+                            "    \"itemId\": \"minecraft:jack_o_lantern\",\n" +
+                            "    \"dropChance\": 8.0,\n" +
+                            "    \"minAmount\": 1,\n" +
+                            "    \"maxAmount\": 1,\n" +
+                            "    \"_comment\": \"Halloween event jack o lantern from zombie\",\n" +
+                            "    \"requirePlayerKill\": true\n" +
+                            "  }\n" +
+                            "]";
+                    break;
+            }
+
+            Files.writeString(exampleFile, exampleJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created {}_Mob_Drops_Example.json", eventType);
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to create event mobs example for {}", eventType, e);
         }
     }
 
@@ -331,7 +693,6 @@ public class LootConfigLoader {
                 // Load enable messages
                 if (rootObject.has("enable") && rootObject.get("enable").isJsonObject()) {
                     JsonObject enableMessages = rootObject.getAsJsonObject("enable");
-                    Map<String, String> enableMap = new HashMap<>();
 
                     for (Map.Entry<String, JsonElement> entry : enableMessages.entrySet()) {
                         String eventName = entry.getKey();
@@ -339,7 +700,6 @@ public class LootConfigLoader {
 
                         if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
                             String message = value.getAsString();
-                            enableMap.put(eventName, message);
                             eventManager.setEventEnableMessage(eventName, message);
                             LOGGER.info("Loaded enable message for {}: {}", eventName, message);
                         } else {
@@ -352,7 +712,6 @@ public class LootConfigLoader {
                 // Load disable messages
                 if (rootObject.has("disable") && rootObject.get("disable").isJsonObject()) {
                     JsonObject disableMessages = rootObject.getAsJsonObject("disable");
-                    Map<String, String> disableMap = new HashMap<>();
 
                     for (Map.Entry<String, JsonElement> entry : disableMessages.entrySet()) {
                         String eventName = entry.getKey();
@@ -360,7 +719,6 @@ public class LootConfigLoader {
 
                         if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
                             String message = value.getAsString();
-                            disableMap.put(eventName, message);
                             eventManager.setEventDisableMessage(eventName, message);
                             LOGGER.info("Loaded disable message for {}: {}", eventName, message);
                         } else {
@@ -370,93 +728,77 @@ public class LootConfigLoader {
                     }
                 }
 
-                // Load other message types if present (drop chance, double drops, etc.)
-                loadOtherMessageTypes(rootObject);
+                // Load drop chance enable message
+                if (rootObject.has("drop_chance_enable") && rootObject.get("drop_chance_enable").isJsonPrimitive()) {
+                    String message = rootObject.get("drop_chance_enable").getAsString();
+                    eventManager.setDropChanceEnableMessage(message);
+                    LOGGER.info("Loaded drop chance enable message: {}", message);
+                }
 
-                LOGGER.info("Successfully loaded custom event messages");
+                // Load drop chance disable message
+                if (rootObject.has("drop_chance_disable") && rootObject.get("drop_chance_disable").isJsonPrimitive()) {
+                    String message = rootObject.get("drop_chance_disable").getAsString();
+                    eventManager.setDropChanceDisableMessage(message);
+                    LOGGER.info("Loaded drop chance disable message: {}", message);
+                }
+
+                // Load double drops enable message
+                if (rootObject.has("double_drops_enable") && rootObject.get("double_drops_enable").isJsonPrimitive()) {
+                    String message = rootObject.get("double_drops_enable").getAsString();
+                    eventManager.setDoubleDropsEnableMessage(message);
+                    LOGGER.info("Loaded double drops enable message: {}", message);
+                }
+
+                // Load double drops disable message
+                if (rootObject.has("double_drops_disable") && rootObject.get("double_drops_disable").isJsonPrimitive()) {
+                    String message = rootObject.get("double_drops_disable").getAsString();
+                    eventManager.setDoubleDropsDisableMessage(message);
+                    LOGGER.info("Loaded double drops disable message: {}", message);
+                }
 
             } catch (JsonSyntaxException e) {
-                LOGGER.error("Invalid JSON syntax in messages file: {}", messagesFile);
-                LOGGER.error("JSON syntax error: {}", e.getMessage());
-                LOGGER.debug("File content: {}", json);
+                LOGGER.error("Invalid JSON syntax in messages file: {}", messagesFile, e);
+            } catch (Exception e) {
+                LOGGER.error("Failed to parse messages from file: {}", messagesFile, e);
             }
 
         } catch (IOException e) {
             LOGGER.error("Failed to read messages file: {}", e.getMessage());
         } catch (Exception e) {
-            LOGGER.error("Unexpected error loading custom messages", e);
+            LOGGER.error("Unexpected error while loading messages", e);
         }
     }
 
     /**
-     * Creates a default messages.json file with example messages.
+     * Creates a default messages file with example structure.
      */
-    private void createDefaultMessagesFile(Path messagesFile) throws IOException {
-        // Ensure directory exists
-        Files.createDirectories(messagesFile.getParent());
+    private void createDefaultMessagesFile(Path messagesFile) {
+        try {
+            String defaultJson = """
+                    {
+                      "enable": {
+                        "Winter": "Winter event has been enabled!",
+                        "Summer": "Summer event has been enabled!",
+                        "Easter": "Easter event has been enabled!",
+                        "Halloween": "Halloween event has been enabled!"
+                      },
+                      "disable": {
+                        "Winter": "Winter event has been disabled!",
+                        "Summer": "Summer event has been disabled!",
+                        "Easter": "Easter event has been disabled!",
+                        "Halloween": "Halloween event has been disabled!"
+                      },
+                      "drop_chance_enable": "Drop chance event has been enabled!",
+                      "drop_chance_disable": "Drop chance event has been disabled!",
+                      "double_drops_enable": "Double drops event has been enabled!",
+                      "double_drops_disable": "Double drops event has been disabled!"
+                    }
+                    """;
 
-        // Create default messages structure
-        Map<String, Object> defaultMessages = new HashMap<>();
-
-        // Default enable messages - using proper UTF-8 encoding
-        Map<String, String> enableMessages = new HashMap<>();
-        enableMessages.put("Winter", "§6[Events] §b[WINTER] Winter event has been enabled!");
-        enableMessages.put("Summer", "§6[Events] §e[SUMMER] Summer event has been enabled!");
-        enableMessages.put("Easter", "§6[Events] §d[EASTER] Easter event has been enabled!");
-        enableMessages.put("Halloween", "§6[Events] §c[HALLOWEEN] Halloween event has been enabled!");
-
-        // Default disable messages
-        Map<String, String> disableMessages = new HashMap<>();
-        disableMessages.put("Winter", "§6[Events] §7[WINTER] Winter event has been disabled!");
-        disableMessages.put("Summer", "§6[Events] §7[SUMMER] Summer event has been disabled!");
-        disableMessages.put("Easter", "§6[Events] §7[EASTER] Easter event has been disabled!");
-        disableMessages.put("Halloween", "§6[Events] §7[HALLOWEEN] Halloween event has been disabled!");
-
-        defaultMessages.put("enable", enableMessages);
-        defaultMessages.put("disable", disableMessages);
-
-        // Add drop chance and double drops messages
-        defaultMessages.put("drop_chance_enable", "§6[Events] §aIncreased drop chance event is now active!");
-        defaultMessages.put("drop_chance_disable", "§6[Events] §cIncreased drop chance event has been disabled!");
-        defaultMessages.put("double_drops_enable", "§6[Events] §aDouble drops event is now active!");
-        defaultMessages.put("double_drops_disable", "§6[Events] §cDouble drops event has been disabled!");
-
-        // Write to file with proper UTF-8 encoding
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(defaultMessages);
-
-        Files.writeString(messagesFile, json, StandardCharsets.UTF_8);
-        LOGGER.info("Created default messages.json file");
-    }
-
-    /**
-     * Loads other message types like drop chance and double drops messages.
-     */
-    private void loadOtherMessageTypes(JsonObject rootObject) {
-        // Load drop chance messages
-        if (rootObject.has("drop_chance_enable") && rootObject.get("drop_chance_enable").isJsonPrimitive()) {
-            String message = rootObject.get("drop_chance_enable").getAsString();
-            eventManager.setDropChanceEnableMessage(message);
-            LOGGER.info("Loaded drop chance enable message: {}", message);
-        }
-
-        if (rootObject.has("drop_chance_disable") && rootObject.get("drop_chance_disable").isJsonPrimitive()) {
-            String message = rootObject.get("drop_chance_disable").getAsString();
-            eventManager.setDropChanceDisableMessage(message);
-            LOGGER.info("Loaded drop chance disable message: {}", message);
-        }
-
-        // Load double drops messages
-        if (rootObject.has("double_drops_enable") && rootObject.get("double_drops_enable").isJsonPrimitive()) {
-            String message = rootObject.get("double_drops_enable").getAsString();
-            eventManager.setDoubleDropsEnableMessage(message);
-            LOGGER.info("Loaded double drops enable message: {}", message);
-        }
-
-        if (rootObject.has("double_drops_disable") && rootObject.get("double_drops_disable").isJsonPrimitive()) {
-            String message = rootObject.get("double_drops_disable").getAsString();
-            eventManager.setDoubleDropsDisableMessage(message);
-            LOGGER.info("Loaded double drops disable message: {}", message);
+            Files.writeString(messagesFile, defaultJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created default messages file: {}", messagesFile);
+        } catch (IOException e) {
+            LOGGER.error("Failed to create default messages file: {}", messagesFile, e);
         }
     }
 }

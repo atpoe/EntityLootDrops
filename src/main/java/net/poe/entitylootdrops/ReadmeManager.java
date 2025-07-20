@@ -39,35 +39,6 @@ public class ReadmeManager {
                 LootDropsReadmeCreator.createEventDropsReadme(lootDropsDir.resolve("Event Drops"));
             }
 
-            // Create block drops README
-            Path blocksDir = configDir.resolve("Blocks");
-            if (Files.exists(blocksDir)) {
-                BlockReadmeCreator.createBlockDropsReadme(blocksDir);
-                BlockReadmeCreator.createNormalDropsReadme(blocksDir.resolve("Normal Drops"));
-                BlockReadmeCreator.createEventDropsReadme(blocksDir.resolve("Event Drops"));
-
-            }
-
-            // Create recipes README
-            Path recipesDir = configDir.resolve("Recipes");
-            if (Files.exists(recipesDir)) {
-                RecipeReadmeCreator.createRecipesReadme(recipesDir);
-                RecipeReadmeCreator.createShapedRecipesReadme(recipesDir.resolve("Shaped"));
-                RecipeReadmeCreator.createShapelessRecipesReadme(recipesDir.resolve("Shapeless"));
-                RecipeReadmeCreator.createBrewingRecipesReadme(recipesDir.resolve("Brewing"));
-                RecipeReadmeCreator.createFurnaceRecipesReadme(recipesDir.resolve("Furnace"));
-                RecipeReadmeCreator.createSmithingRecipesReadme(recipesDir.resolve("Smithing"));
-            }
-
-            // Create fishing drops README
-            Path fishingDir = configDir.resolve("Fishing");
-            if (Files.exists(fishingDir)) {
-                FishingReadmeCreator.createFishingDropsReadme(fishingDir);
-                FishingReadmeCreator.createConditionalFishingReadme(fishingDir.resolve("Conditional Drops"));
-                FishingReadmeCreator.createBiomeFishingReadme(fishingDir.resolve("Biome Drops"));
-                FishingReadmeCreator.createDimensionFishingReadme(fishingDir.resolve("Dimension Drops"));
-            }
-
             LOGGER.info("Created all README files");
         } catch (IOException e) {
             LOGGER.error("Failed to create README files", e);
