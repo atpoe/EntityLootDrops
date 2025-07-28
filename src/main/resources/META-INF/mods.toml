@@ -4,7 +4,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="entitylootdrops"
-version="2.4"
+version="2.5"
 displayName="Entity Loot Drops"
 logoFile="assets/entitylootdrops/textures/gui/logo.png"
 description='''

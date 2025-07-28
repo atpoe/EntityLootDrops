@@ -94,17 +94,27 @@ public class LootConfigLoader {
             LOGGER.error("Failed to create Active_Events.json", e);
         }
 
+        // Load active events from Active_Events.json
+        boolean activeEventsLoaded = false;
+        try {
+            eventManager.loadActiveEventsState();
+            activeEventsLoaded = true;
+            LOGGER.info("Active events loaded from Active_Events.json");
+        } catch (Exception e) {
+            LOGGER.error("Failed to load active events from file", e);
+        }
+
         // Load all drop configurations
         loadAllDrops();
 
         // Load custom message configurations
         loadMessages();
 
-        // Restore previous state if no state was loaded
-        eventManager.restorePreviousState(previousActiveEvents, previousDropChanceState, previousDoubleDropsState, previousDebugState);
-
-        LOGGER.info("Loot configuration loading completed. Entity drops: {}, Hostile drops: {}",
-                configManager.getEntityDropsCount(), configManager.getHostileDropsCount());
+        // Restore previous state only if no active events were loaded from file
+        if (!activeEventsLoaded) {
+            eventManager.restorePreviousState(previousActiveEvents, previousDropChanceState, previousDoubleDropsState, previousDebugState);
+            LOGGER.info("Used previous state as fallback since no active events file was loaded");
+        }
     }
 
     /**
@@ -153,22 +163,19 @@ public class LootConfigLoader {
                 createNormalDropsExamples();
             }
 
-            // Check Normal Drops/Mobs directory
-            Path normalMobsDir = normalDropsDir.resolve(MOBS_DIR);
-            if (isDirectoryEmptyOfJsonFiles(normalMobsDir)) {
-                createNormalMobsExamples();
-            }
-
             // Check Event Drops directories
             Path eventDropsDir = Paths.get(CONFIG_DIR, LOOT_DROPS_DIR, EVENT_DROPS_DIR);
             for (String eventType : EVENT_TYPES) {
                 Path eventDir = eventDropsDir.resolve(eventType);
-                if (isDirectoryEmptyOfJsonFiles(eventDir)) {
+                boolean eventDirWasEmpty = isDirectoryEmptyOfJsonFiles(eventDir);
+
+                if (eventDirWasEmpty) {
                     createEventDropsExample(eventType);
                 }
 
+                // Only create mobs examples if the parent event directory was also empty (first time setup)
                 Path eventMobsDir = eventDir.resolve(MOBS_DIR);
-                if (isDirectoryEmptyOfJsonFiles(eventMobsDir)) {
+                if (eventDirWasEmpty && isDirectoryEmptyOfAnyFiles(eventMobsDir)) {
                     createEventMobsExample(eventType);
                 }
             }
@@ -211,7 +218,27 @@ public class LootConfigLoader {
                     .isEmpty();
 
         } catch (Exception e) {
-            LOGGER.error("Failed to check if directory is empty: {}", directory, e);
+            LOGGER.error("Failed to check if directory is empty of JSON files: {}", directory, e);
+            return false;
+        }
+    }
+
+    /**
+     * Checks if a directory is empty of any files (not just JSON files).
+     */
+    private boolean isDirectoryEmptyOfAnyFiles(Path directory) {
+        try {
+            if (!Files.exists(directory)) {
+                return true;
+            }
+
+            return Files.walk(directory, 1)
+                    .filter(Files::isRegularFile)
+                    .findFirst()
+                    .isEmpty();
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to check if directory is empty of any files: {}", directory, e);
             return false;
         }
     }
@@ -776,22 +803,22 @@ public class LootConfigLoader {
         try {
             String defaultJson = """
                     {
-                      "enable": {
-                        "Winter": "Winter event has been enabled!",
-                        "Summer": "Summer event has been enabled!",
-                        "Easter": "Easter event has been enabled!",
-                        "Halloween": "Halloween event has been enabled!"
-                      },
-                      "disable": {
-                        "Winter": "Winter event has been disabled!",
-                        "Summer": "Summer event has been disabled!",
-                        "Easter": "Easter event has been disabled!",
-                        "Halloween": "Halloween event has been disabled!"
-                      },
-                      "drop_chance_enable": "Drop chance event has been enabled!",
-                      "drop_chance_disable": "Drop chance event has been disabled!",
-                      "double_drops_enable": "Double drops event has been enabled!",
-                      "double_drops_disable": "Double drops event has been disabled!"
+                        "enable": {
+                            "Easter": "§6[Events] §d[EASTER] Easter event has been enabled!",
+                            "Winter": "§6[Events] §b[WINTER] Winter event has been enabled!",
+                            "Summer": "§6[Events] §e[SUMMER] Summer event has been enabled!",
+                            "Halloween": "§6[Events] §c[HALLOWEEN] Halloween event has been enabled!"
+                        },
+                        "disable": {
+                            "Easter": "§6[Events] §d[EASTER] Easter event has been disabled!",
+                            "Winter": "§6[Events] §b[WINTER] Winter event has been disabled!",
+                            "Summer": "§6[Events] §e[SUMMER] Summer event has been disabled!",
+                            "Halloween": "§6[Events] §c[HALLOWEEN] Halloween event has been disabled!"
+                        },
+                        "drop_chance_enable": "§6[Events] §aDouble Drop Chance §eevent has been enabled! §e(2x drop rates)",
+                        "drop_chance_disable": "§6[Events] §cDouble Drop Chance event has been disabled!",
+                        "double_drops_enable": "§6[Events] §aDouble Drops §eevent has been enabled! §e(2x drop amounts)",
+                        "double_drops_disable": "§6[Events] §cDouble Drops event has been disabled!"
                     }
                     """;
 
