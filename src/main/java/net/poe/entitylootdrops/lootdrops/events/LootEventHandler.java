@@ -710,6 +710,11 @@ public class LootEventHandler {
             return false;
         }
 
+        // If requirePlayerKill is false and no player killed the mob, skip player-dependent checks
+        if (!drop.isRequirePlayerKill() && player == null) {
+            return true; // No player-dependent requirements to check
+        }
+
         return checkDropRequirements(drop, player);
     }
 
@@ -717,8 +722,9 @@ public class LootEventHandler {
      * Checks if all drop requirements are met (overloaded version).
      */
     private static boolean checkDropRequirements(CustomDropEntry drop, Player player) {
+        // If requirePlayerKill is false and player is null, we already handled this case above
         if (player == null) {
-            return false;
+            return false; // This should only happen if requirePlayerKill is true
         }
 
         // Check advancement requirement

@@ -3,7 +3,7 @@ Specification-Title: entitylootdrops
 Specification-Vendor: entitylootdrops
 Specification-Version: 1
 Implementation-Title: EntityLootDrops
-Implementation-Version: 2.5
+Implementation-Version: 2.6
 Implementation-Vendor: entitylootdrops
-Implementation-Timestamp: 2025-07-28T03:30:28+0100
+Implementation-Timestamp: 2025-07-30T23:41:46+0100
 

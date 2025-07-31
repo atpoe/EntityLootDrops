@@ -1016,26 +1016,50 @@ Button createButton = Button.builder(
 this.addRenderableWidget(createButton);
 }
 
-private void loadFileList() {
-fileList.clear();
-File dir = new File(currentDirectory);
+    private void loadFileList() {
+        fileList.clear();
+        File dir = new File(currentDirectory);
 
-if (dir.exists() && dir.isDirectory()) {
-    // Add directories first
-    Arrays.stream(dir.listFiles())
-        .filter(File::isDirectory)
-        .map(File::getName)
-        .sorted()
-        .forEach(fileList::add);
-    
-    // Then add files
-    Arrays.stream(dir.listFiles())
-        .filter(file -> !file.isDirectory() && file.getName().endsWith(".json"))
-        .map(File::getName)
-        .sorted()
-        .forEach(fileList::add);
-}
-}
+        try {
+            if (!dir.exists()) {
+                // Create the directory if it doesn't exist
+                dir.mkdirs();
+                errorMessage = "Created directory: " + currentDirectory;
+                return;
+            }
+
+            if (!dir.isDirectory()) {
+                errorMessage = "Path is not a directory: " + currentDirectory;
+                return;
+            }
+
+            File[] files = dir.listFiles();
+            if (files == null) {
+                errorMessage = "Cannot read directory: " + currentDirectory;
+                return;
+            }
+
+            // Add directories first (including hidden ones)
+            Arrays.stream(files)
+                    .filter(File::isDirectory)
+                    .filter(file -> !file.getName().startsWith(".")) // Skip system hidden folders
+                    .map(File::getName)
+                    .sorted()
+                    .forEach(fileList::add);
+
+            // Then add files (including all json files, not just .json)
+            Arrays.stream(files)
+                    .filter(file -> file.isFile())
+                    .filter(file -> file.getName().toLowerCase().endsWith(".json"))
+                    .filter(file -> file.canRead()) // Only show readable files
+                    .map(File::getName)
+                    .sorted()
+                    .forEach(fileList::add);
+
+        } catch (Exception e) {
+            errorMessage = "Error loading directory: " + e.getMessage();
+        }
+    }
 
 @Override
 public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
