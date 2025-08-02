@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "net.poe.entitylootdrops.mixin.emi",
+  "compatibilityLevel": "JAVA_17",
+  "plugin": "net.poe.entitylootdrops.mixin.ConditionalMixinPlugin",
+  "mixins": [
+    "LootTableParserMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

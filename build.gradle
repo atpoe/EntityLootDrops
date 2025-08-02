@@ -2,9 +2,10 @@ plugins {
     id 'eclipse'
     id 'maven-publish'
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'org.spongepowered.mixin' version '0.7.+'
 }
 
-version = '2.6'
+version = '2.7'
 group = 'net.poe.entitylootdrops'
 
 base {
@@ -12,8 +13,6 @@ base {
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
-
-println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
 
 minecraft {
     mappings channel: 'official', version: '1.20.1'
@@ -24,7 +23,7 @@ minecraft {
             workingDirectory project.file('run')
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
-            
+
             mods {
                 entitylootdrops {
                     source sourceSets.main
@@ -50,27 +49,43 @@ repositories {
     maven {
         url = "https://maven.blamejared.com"
     }
+    maven {
+        name "curseMaven"
+        url "https://cursemaven.com"
+    }
+}
+
+mixin {
+    config 'entitylootdrops.mixins.json'
+
+    // Removed the duplicate EMI mixin config line - it's handled by the ConditionalMixinPlugin
+
+    debug.verbose = true
+    debug.export = true
 }
 
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.3.0'
+
+    // Make EMI optional - only compile against it, don't require it at runtime
+    compileOnly fg.deobf("curse.maven:emiloot-681783:6449092")
+
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
 
+// Add manifest entries for optional dependencies
 tasks.named('jar', Jar).configure {
     manifest {
         attributes([
-            "Specification-Title": "entitylootdrops",
-            "Specification-Vendor": "entitylootdrops",
-            "Specification-Version": "1",
-            "Implementation-Title": project.name,
-            "Implementation-Version": project.jar.archiveVersion,
-            "Implementation-Vendor" :"entitylootdrops",
-            "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+                "Specification-Title": "entitylootdrops",
+                "Specification-Vendor": "entitylootdrops",
+                "Specification-Version": "1",
+                "Implementation-Title": project.name,
+                "Implementation-Version": project.jar.archiveVersion,
+                "Implementation-Vendor" :"entitylootdrops",
+                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                "MixinConfigs": "entitylootdrops.mixins.json,entitylootdrops.emi.mixins.json"
         ])
     }
     finalizedBy 'reobfJar'
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
 }

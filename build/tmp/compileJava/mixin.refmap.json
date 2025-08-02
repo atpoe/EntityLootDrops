@@ -1,0 +1,14 @@
+{
+  "mappings": {
+    "net/poe/entitylootdrops/mixin/LootPoolSingletonContainerAccessor": {
+      "functions": "f_79677_:[Lnet/minecraft/world/level/storage/loot/functions/LootItemFunction;"
+    }
+  },
+  "data": {
+    "searge": {
+      "net/poe/entitylootdrops/mixin/LootPoolSingletonContainerAccessor": {
+        "functions": "f_79677_:[Lnet/minecraft/world/level/storage/loot/functions/LootItemFunction;"
+      }
+    }
+  }
+}
