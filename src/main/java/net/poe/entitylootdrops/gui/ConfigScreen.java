@@ -786,7 +786,7 @@ public class ConfigScreen extends Screen {
             if (Files.isDirectory(filePath)) {
                 // Directory button
                 fileButton = Button.builder(
-                    Component.literal("📁 " + fileName),
+                    Component.literal("[DIR] " + fileName),
                     (btn) -> {
                         // Navigate to directory
                         currentDirectory = filePath.toString();
@@ -809,7 +809,7 @@ public class ConfigScreen extends Screen {
                 // Add delete button only if user has edit permission
                 if (hasEditPermission()) {
                     Button deleteButton = Button.builder(
-                        Component.literal("❌"),
+                        Component.literal("[DEL]"),
                         (btn) -> {
                             // Delete file
                             try {

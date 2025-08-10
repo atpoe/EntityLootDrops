@@ -729,9 +729,6 @@ public class LootConfigLoader {
                             String message = value.getAsString();
                             eventManager.setEventEnableMessage(eventName, message);
                             LOGGER.info("Loaded enable message for {}: {}", eventName, message);
-                        } else {
-                            LOGGER.warn("Skipping invalid enable message for '{}': expected string but found {}",
-                                    eventName, value.getClass().getSimpleName());
                         }
                     }
                 }
@@ -799,33 +796,26 @@ public class LootConfigLoader {
     /**
      * Creates a default messages file with example structure.
      */
-    private void createDefaultMessagesFile(Path messagesFile) {
-        try {
-            String defaultJson = """
-                    {
-                        "enable": {
-                            "Easter": "§6[Events] §d[EASTER] Easter event has been enabled!",
-                            "Winter": "§6[Events] §b[WINTER] Winter event has been enabled!",
-                            "Summer": "§6[Events] §e[SUMMER] Summer event has been enabled!",
-                            "Halloween": "§6[Events] §c[HALLOWEEN] Halloween event has been enabled!"
-                        },
-                        "disable": {
-                            "Easter": "§6[Events] §d[EASTER] Easter event has been disabled!",
-                            "Winter": "§6[Events] §b[WINTER] Winter event has been disabled!",
-                            "Summer": "§6[Events] §e[SUMMER] Summer event has been disabled!",
-                            "Halloween": "§6[Events] §c[HALLOWEEN] Halloween event has been disabled!"
-                        },
-                        "drop_chance_enable": "§6[Events] §aDouble Drop Chance §eevent has been enabled! §e(2x drop rates)",
-                        "drop_chance_disable": "§6[Events] §cDouble Drop Chance event has been disabled!",
-                        "double_drops_enable": "§6[Events] §aDouble Drops §eevent has been enabled! §e(2x drop amounts)",
-                        "double_drops_disable": "§6[Events] §cDouble Drops event has been disabled!"
-                    }
-                    """;
+    private void createDefaultMessagesFile(Path messagesFile) throws IOException {
+        String defaultContent = "{\n" +
+                "  \"enable\": {\n" +
+                "    \"Easter\": \"§a[Events] §aEaster Event§f has been §aenabled!\",\n" +
+                "    \"Winter\": \"§a[Events] §aWinter Event§f has been §aenabled!\",\n" +
+                "    \"Summer\": \"§a[Events] §aSummer Event§f has been §aenabled!\",\n" +
+                "    \"Halloween\": \"§a[Events] §aHalloween Event§f has been §aenabled!\"\n" +
+                "  },\n" +
+                "  \"disable\": {\n" +
+                "    \"Easter\": \"§c[Events] §aEaster Event§f has been §cdisabled!\",\n" +
+                "    \"Winter\": \"§c[Events] §aWinter Event§f has been §cdisabled!\",\n" +
+                "    \"Summer\": \"§c[Events] §aSummer Event§f has been §cdisabled!\",\n" +
+                "    \"Halloween\": \"§c[Events] §aHalloween Event§f has been §cdisabled!\"\n" +
+                "  },\n" +
+                "  \"drop_chance_enable\": \"§a[Events] §aDouble Drop Chance Event§f has been §aenabled! §6x2x drop rates\",\n" +
+                "  \"drop_chance_disable\": \"§c[Events] §aDouble Drop Chance Event§f has been §cdisabled!\",\n" +
+                "  \"double_drops_enable\": \"§a[Events] §aDouble Drops Event§f has been §aenabled! §6x2x drop amounts\",\n" +
+                "  \"double_drops_disable\": \"§c[Events] §aDouble Drops Event§f has been §cdisabled!\"\n" +
+                "}";
 
-            Files.writeString(messagesFile, defaultJson, StandardCharsets.UTF_8);
-            LOGGER.info("Created default messages file: {}", messagesFile);
-        } catch (IOException e) {
-            LOGGER.error("Failed to create default messages file: {}", messagesFile, e);
-        }
+        Files.writeString(messagesFile, defaultContent, StandardCharsets.UTF_8);
     }
 }

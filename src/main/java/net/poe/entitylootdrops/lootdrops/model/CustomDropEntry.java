@@ -28,6 +28,7 @@ public class CustomDropEntry {
     private float extraDropChance = 0.0f;    // Percentage chance for extra vanilla drops (0-100)
     private int extraAmountMin = 1;          // Minimum amount of extra vanilla drops
     private int extraAmountMax = 1;          // Maximum amount of extra vanilla drops
+    private boolean enableDropCount = false; // Enable drop count tracking for this entry
 
     /**
      * Default constructor for Gson deserialization.
@@ -42,6 +43,7 @@ public class CustomDropEntry {
         this.extraAmountMin = 1;
         this.extraAmountMax = 1;
         this.commandCoolDown = 0; // Default to no cooldown
+        this.enableDropCount = false; // Default to false (logs total drops for each player)
     }
 
     /**
@@ -95,6 +97,7 @@ public class CustomDropEntry {
     public float getExtraDropChance() { return extraDropChance; }
     public int getExtraAmountMin() { return extraAmountMin; }
     public int getExtraAmountMax() { return extraAmountMax; }
+    public boolean isEnableDropCount() { return enableDropCount; }
 
     // Setters
     public void setItemId(String itemId) { this.itemId = itemId; }
@@ -121,6 +124,7 @@ public class CustomDropEntry {
     public void setExtraDropChance(float extraDropChance) { this.extraDropChance = extraDropChance; }
     public void setExtraAmountMin(int extraAmountMin) { this.extraAmountMin = extraAmountMin; }
     public void setExtraAmountMax(int extraAmountMax) { this.extraAmountMax = extraAmountMax; }
+    public void setEnableDropCount(boolean enableDropCount) { this.enableDropCount = enableDropCount; }
 
     // Utility methods
     public boolean hasCommand() { return command != null && !command.isEmpty(); }

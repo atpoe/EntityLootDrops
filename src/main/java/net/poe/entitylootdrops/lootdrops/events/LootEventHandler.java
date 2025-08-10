@@ -42,6 +42,7 @@ import net.poe.entitylootdrops.lootdrops.LootConfig;
 import net.poe.entitylootdrops.lootdrops.config.EventConfig;
 import net.poe.entitylootdrops.lootdrops.model.CustomDropEntry;
 import net.poe.entitylootdrops.lootdrops.model.EntityDropEntry;
+import net.poe.entitylootdrops.lootdrops.events.EventDropCountManager;
 
 /**
  * Main event handler for the EntityLootDrops mod.
@@ -161,6 +162,7 @@ public class LootEventHandler {
         if (playerKilled && player != null) {
             applyDropEvents(event);
         }
+
 
         // Phase 3: Process extra vanilla drops
         processExtraVanillaDrops(event, entity, player, entityIdStr, isHostile);
@@ -460,11 +462,11 @@ public class LootEventHandler {
     private static void processCustomDrops(LivingDropsEvent event, String entityIdStr, boolean isHostile,
                                            Player player, boolean playerKilled) {
         // Process normal entity-specific drops
-        processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player, playerKilled);
+        processEntityDrops(event, entityIdStr, LootConfig.getNormalDrops(), player, playerKilled, "Normal");
 
         // Process normal hostile drops
         if (isHostile) {
-            processDrops(event, LootConfig.getNormalHostileDrops(), player, playerKilled);
+            processDrops(event, LootConfig.getNormalHostileDrops(), player, playerKilled, "Normal");
         }
 
         // Process event-specific drops
@@ -484,12 +486,12 @@ public class LootEventHandler {
         // Process event entity-specific drops
         List<EntityDropEntry> eventDropList = LootConfig.getEventDrops().get(eventName);
         if (eventDropList != null) {
-            processEntityDrops(event, entityIdStr, eventDropList, player, playerKilled);
+            processEntityDrops(event, entityIdStr, eventDropList, player, playerKilled, eventName);
         }
 
         // Process event hostile drops
         if (isHostile) {
-            processDrops(event, LootConfig.getEventHostileDrops(eventName), player, playerKilled);
+            processDrops(event, LootConfig.getEventHostileDrops(eventName), player, playerKilled, eventName);
         }
     }
 
@@ -509,10 +511,10 @@ public class LootEventHandler {
      * Processes entity-specific drops for a given entity.
      */
     private static void processEntityDrops(LivingDropsEvent event, String entityIdStr,
-                                           List<EntityDropEntry> dropsList, Player player, boolean playerKilled) {
+                                           List<EntityDropEntry> dropsList, Player player, boolean playerKilled, String eventName) {
         for (EntityDropEntry drop : dropsList) {
             if (drop.getEntityId().equals(entityIdStr)) {
-                processDropEntry(event, drop, player, playerKilled);
+                processDropEntry(event, drop, player, playerKilled, eventName);
             }
         }
     }
@@ -521,9 +523,9 @@ public class LootEventHandler {
      * Processes a list of custom drops.
      */
     private static void processDrops(LivingDropsEvent event, List<CustomDropEntry> drops,
-                                     Player player, boolean playerKilled) {
+                                     Player player, boolean playerKilled, String eventName) {
         for (CustomDropEntry drop : drops) {
-            processDropEntry(event, drop, player, playerKilled);
+            processDropEntry(event, drop, player, playerKilled, eventName);
         }
     }
 
@@ -531,7 +533,7 @@ public class LootEventHandler {
      * Processes a single drop entry.
      */
     private static void processDropEntry(LivingDropsEvent event, CustomDropEntry drop,
-                                         Player player, boolean playerKilled) {
+                                         Player player, boolean playerKilled, String eventName) {
         try {
             // Check all requirements
             if (!checkDropRequirements(drop, player, playerKilled)) {
@@ -541,8 +543,8 @@ public class LootEventHandler {
             // Execute command if present
             executeDropCommand(drop, player, event.getEntity());
 
-            // Handle item drop
-            handleItemDrop(event, drop, player);
+            // Handle item drop - NOW WITH EVENT NAME
+            handleItemDrop(event, drop, player, eventName);
 
         } catch (Exception e) {
             LOGGER.error("Error processing drop {}: {}", drop.getItemId(), e.getMessage());
@@ -581,7 +583,7 @@ public class LootEventHandler {
     /**
      * Handles the item drop logic.
      */
-    private static void handleItemDrop(LivingDropsEvent event, CustomDropEntry drop, Player player) {
+    private static void handleItemDrop(LivingDropsEvent event, CustomDropEntry drop, Player player, String eventName) {
         // Skip item drop if itemId is null or empty
         if (drop.getItemId() == null || drop.getItemId().isEmpty()) {
             return;
@@ -600,6 +602,9 @@ public class LootEventHandler {
                 event.getEntity().spawnAtLocation(stack);
                 logDebug("Dropped {} x{} from {}", drop.getItemId(), amount,
                         ForgeRegistries.ENTITY_TYPES.getKey(event.getEntity().getType()));
+
+                // RECORD DROP COUNT IF ENABLED
+                recordDropCountEnabledItems(player, eventName, drop, drop.getItemId(), amount);
 
                 // Execute drop command if present
                 executeDropCommandOnDrop(drop, player, event.getEntity(), amount);
@@ -917,5 +922,29 @@ public class LootEventHandler {
         result = result.replace("@player", player.getName().getString());
 
         return result;
+    }
+    /**
+     * Records drops for items that have enableDropCount=true in their configuration.
+     */
+    private static void recordDropCountEnabledItems(Player player, String eventKey, CustomDropEntry entry,
+                                                    String itemId, int actualAmount) {
+        if (player == null || !entry.isEnableDropCount()) {
+            return;
+        }
+
+        // Only record for actual events, not normal drops
+        if ("Normal".equals(eventKey)) {
+            return;
+        }
+
+        try {
+            EventDropCountManager.recordEventDrop(eventKey, player, itemId, actualAmount);
+
+            logDebug("Recorded drop count for event {}: player={}, item={}, amount={}",
+                    eventKey, player.getName().getString(), itemId, actualAmount);
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to record drop count for event: " + eventKey, e);
+        }
     }
 }

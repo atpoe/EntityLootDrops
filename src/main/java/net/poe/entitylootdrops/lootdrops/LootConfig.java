@@ -3,16 +3,19 @@ package net.poe.entitylootdrops.lootdrops;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import net.minecraft.world.entity.player.Player;
 import net.poe.entitylootdrops.lootdrops.config.LootConfigLoader;
 import net.poe.entitylootdrops.lootdrops.config.LootConfigManager;
 import net.poe.entitylootdrops.lootdrops.events.LootEventManager;
 import net.poe.entitylootdrops.lootdrops.model.CustomDropEntry;
-import net.poe.entitylootdrops.lootdrops.model.EntityDropEntry;
+import net.poe.entitylootdrops.lootdrops.model.EntityDropEntry; // FIXED: removed extra semicolon
 
 /**
  * Main configuration class for the EntityLootDrops mod.
@@ -37,8 +40,8 @@ public class LootConfig {
     public static void loadConfig() {
         configLoader.loadConfig();
         LOGGER.info("Reloaded configuration: {} entity drop types, {} hostile drop types, {} active events",
-            configManager.getEntityDropsCount(), configManager.getHostileDropsCount(),
-            eventManager.getActiveEventsCount());
+                configManager.getEntityDropsCount(), configManager.getHostileDropsCount(),
+                eventManager.getActiveEventsCount());
     }
 
     /**
@@ -96,6 +99,9 @@ public class LootConfig {
     public static void toggleDoubleDrops(boolean active) {
         eventManager.toggleDoubleDrops(active);
     }
+
+    // REMOVED: The three methods that referenced LootDropsEventManager
+    // Commands now use EventDropCountManager directly
 
     /**
      * Clears all active events.
@@ -200,5 +206,70 @@ public class LootConfig {
 
     public static String getDoubleDropsDisableMessage() {
         return eventManager.getDoubleDropsDisableMessage();
+    }
+
+    // ========== DROP COUNT METHODS (NEW FUNCTIONALITY) ==========
+
+    /**
+     * Enables or disables drop counting.
+     */
+    public static void enableDropCount(boolean enabled) {
+        eventManager.enableDropCount(enabled);
+    }
+
+    /**
+     * Checks if drop counting is enabled.
+     */
+    public static boolean isDropCountEnabled() {
+        return eventManager.isDropCountEnabled();
+    }
+
+    /**
+     * Records a drop for a player.
+     */
+    public static void recordDrop(Player player, String itemId, int amount) {
+        eventManager.recordDrop(player, itemId, amount);
+    }
+
+    /**
+     * Gets drop count for a specific player by UUID.
+     */
+    public static Optional<LootEventManager.PlayerDropCount> getPlayerDropCount(UUID playerId) {
+        return eventManager.getPlayerDropCount(playerId);
+    }
+
+    /**
+     * Gets drop count for a specific player by name.
+     */
+    public static Optional<LootEventManager.PlayerDropCount> getPlayerDropCount(String playerName) {
+        return eventManager.getPlayerDropCount(playerName);
+    }
+
+    /**
+     * Gets top drop counts for leaderboard (sorted by total drops descending).
+     */
+    public static List<Map.Entry<UUID, LootEventManager.PlayerDropCount>> getTopDropCounts() {
+        return eventManager.getTopDropCounts();
+    }
+
+    /**
+     * Resets all drop counts.
+     */
+    public static void resetDropCounts() {
+        eventManager.resetDropCounts();
+    }
+
+    /**
+     * Saves drop count data to file.
+     */
+    public static void saveDropCountData() {
+        eventManager.saveDropCountData();
+    }
+
+    /**
+     * Loads drop count data from file.
+     */
+    public static void loadDropCountData() {
+        eventManager.loadDropCountData();
     }
 }

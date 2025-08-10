@@ -126,8 +126,6 @@ public class MainReadmeCreator {
 
             readme.append("Method 2 - Set Drop Chance/Chance to 0 (and Command Chance):\n");
             readme.append("- For entity drops: Set \"dropChance\": 0 AND \"commandChance\": 0\n");
-            readme.append("- For fishing drops: Set \"chance\": 0\n");
-            readme.append("- For block drops: Set \"dropChance\": 0 AND \"commandChance\": 0\n");
             readme.append("(This disables both item drops AND command execution)\n\n");
 
             readme.append("Method 3 - Set Amounts to 0 (Alternative):\n");

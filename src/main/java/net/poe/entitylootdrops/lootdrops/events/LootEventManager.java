@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,6 +23,8 @@ import com.google.gson.reflect.TypeToken;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
 /**
@@ -40,6 +43,10 @@ public class LootEventManager {
     private boolean dropChanceEventActive = false;
     private boolean doubleDropsActive = false;
     private boolean debugLoggingEnabled = false;
+    private boolean dropCountEnabled = false;
+
+    // Drop count tracking
+    private Map<UUID, PlayerDropCount> playerDropCounts = new HashMap<>();
 
     // Custom messages for event notifications
     private Map<String, String> eventEnableMessages = new HashMap<>();
@@ -50,6 +57,44 @@ public class LootEventManager {
     private String dropChanceDisableMessage = "§6[Events] §cDouble Drop Chance event has been disabled!";
     private String doubleDropsEnableMessage = "§6[Events] §aDouble Drops §eevent has been enabled! §e(2x drop amounts)";
     private String doubleDropsDisableMessage = "§6[Events] §cDouble Drops event has been disabled!";
+
+    /**
+     * Player drop count data structure.
+     */
+    public static class PlayerDropCount {
+        private String playerName;
+        private int totalDrops = 0;
+        private Map<String, Integer> itemCounts = new HashMap<>();
+        private long lastUpdated = System.currentTimeMillis();
+
+        public PlayerDropCount() {}
+
+        public PlayerDropCount(String playerName) {
+            this.playerName = playerName;
+        }
+
+        // Getters and setters
+        public String getPlayerName() { return playerName; }
+        public void setPlayerName(String playerName) { this.playerName = playerName; }
+
+        public int getTotalDrops() { return totalDrops; }
+        public void setTotalDrops(int totalDrops) { this.totalDrops = totalDrops; }
+
+        public Map<String, Integer> getItemCounts() { return itemCounts; }
+        public void setItemCounts(Map<String, Integer> itemCounts) { this.itemCounts = itemCounts; }
+
+        public long getLastUpdated() { return lastUpdated; }
+        public void setLastUpdated(long lastUpdated) { this.lastUpdated = lastUpdated; }
+
+        /**
+         * Adds a drop to this player's count.
+         */
+        public void addDrop(String itemId, int amount) {
+            totalDrops += amount;
+            itemCounts.put(itemId, itemCounts.getOrDefault(itemId, 0) + amount);
+            lastUpdated = System.currentTimeMillis();
+        }
+    }
 
     /**
      * Checks if an event is currently active.
@@ -144,6 +189,82 @@ public class LootEventManager {
     }
 
     /**
+     * Enables or disables drop counting.
+     */
+    public void enableDropCount(boolean enabled) {
+        dropCountEnabled = enabled;
+        if (enabled) {
+            broadcastEventMessage("§6[Drop Count] §aEnabled drop counting! §7Items will be tracked per player.");
+            LOGGER.info("Enabled drop counting");
+            createDropCountFile();
+        } else {
+            broadcastEventMessage("§6[Drop Count] §cDisabled drop counting.");
+            LOGGER.info("Disabled drop counting");
+        }
+        saveActiveEventsState();
+    }
+
+    /**
+     * Records a drop for a player.
+     */
+    public void recordDrop(Player player, String itemId, int amount) {
+        if (!dropCountEnabled || player == null) {
+            return;
+        }
+
+        UUID playerId = player.getUUID();
+        PlayerDropCount dropCount = playerDropCounts.computeIfAbsent(playerId,
+                k -> new PlayerDropCount(player.getName().getString()));
+
+        // Update player name in case it changed
+        dropCount.setPlayerName(player.getName().getString());
+        dropCount.addDrop(itemId, amount);
+
+        LOGGER.debug("Recorded drop for {}: {} x{} (Total: {})",
+                player.getName().getString(), itemId, amount, dropCount.getTotalDrops());
+
+        // Save periodically (every 10 drops to avoid excessive I/O)
+        if (dropCount.getTotalDrops() % 10 == 0) {
+            saveDropCountData();
+        }
+    }
+
+    /**
+     * Gets drop count for a specific player.
+     */
+    public Optional<PlayerDropCount> getPlayerDropCount(UUID playerId) {
+        return Optional.ofNullable(playerDropCounts.get(playerId));
+    }
+
+    /**
+     * Gets drop count for a specific player by name.
+     */
+    public Optional<PlayerDropCount> getPlayerDropCount(String playerName) {
+        return playerDropCounts.values().stream()
+                .filter(dropCount -> playerName.equals(dropCount.getPlayerName()))
+                .findFirst();
+    }
+
+    /**
+     * Gets all player drop counts sorted by total drops (descending).
+     */
+    public List<Map.Entry<UUID, PlayerDropCount>> getTopDropCounts() {
+        return playerDropCounts.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue().getTotalDrops(), a.getValue().getTotalDrops()))
+                .toList();
+    }
+
+    /**
+     * Resets all drop counts.
+     */
+    public void resetDropCounts() {
+        playerDropCounts.clear();
+        broadcastEventMessage("§6[Drop Count] §eAll drop counts have been reset!");
+        LOGGER.info("Reset all drop counts");
+        saveDropCountData();
+    }
+
+    /**
      * Clears all active events.
      */
     public void clearActiveEvents() {
@@ -169,6 +290,7 @@ public class LootEventManager {
         int count = activeEvents.size();
         if (dropChanceEventActive) count++;
         if (doubleDropsActive) count++;
+        if (dropCountEnabled) count++;
         return count;
     }
 
@@ -194,6 +316,13 @@ public class LootEventManager {
     }
 
     /**
+     * Checks if drop counting is enabled.
+     */
+    public boolean isDropCountEnabled() {
+        return dropCountEnabled;
+    }
+
+    /**
      * Enables or disables debug logging.
      */
     public void setDebugLogging(boolean enabled) {
@@ -201,6 +330,31 @@ public class LootEventManager {
         LootEventHandler.setDebugLogging(enabled);
         LOGGER.info("Debug logging {}", enabled ? "enabled" : "disabled");
         saveActiveEventsState();
+    }
+
+    /**
+     * Creates the Drop_Count.json file if it doesn't exist.
+     */
+    public void createDropCountFile() {
+        try {
+            Path dropCountFile = Paths.get(CONFIG_DIR, "Drop_Count.json");
+
+            if (!Files.exists(dropCountFile)) {
+                Files.createDirectories(dropCountFile.getParent());
+
+                Map<String, Object> defaultData = new HashMap<>();
+                defaultData.put("enabled", dropCountEnabled);
+                defaultData.put("playerDropCounts", new HashMap<String, PlayerDropCount>());
+                defaultData.put("lastUpdated", System.currentTimeMillis());
+                defaultData.put("comment", "Tracks custom item drops per player for events. Player UUIDs are used as keys.");
+
+                Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                Files.writeString(dropCountFile, gson.toJson(defaultData));
+                LOGGER.info("Created Drop_Count.json file: {}", dropCountFile);
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to create Drop_Count.json file", e);
+        }
     }
 
     /**
@@ -219,6 +373,7 @@ public class LootEventManager {
                 defaultState.put("dropChanceEventActive", false);
                 defaultState.put("doubleDropsActive", false);
                 defaultState.put("debugLoggingEnabled", false);
+                defaultState.put("dropCountEnabled", false);
 
                 Gson gson = new GsonBuilder().setPrettyPrinting().create();
                 Files.writeString(stateFile, gson.toJson(defaultState));
@@ -226,6 +381,81 @@ public class LootEventManager {
             }
         } catch (Exception e) {
             LOGGER.error("Failed to create Active_Events.json file", e);
+        }
+    }
+
+    /**
+     * Saves drop count data to Drop_Count.json.
+     */
+    public void saveDropCountData() {
+        try {
+            Path dropCountFile = Paths.get(CONFIG_DIR, "Drop_Count.json");
+            Files.createDirectories(dropCountFile.getParent());
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("enabled", dropCountEnabled);
+            data.put("playerDropCounts", playerDropCounts);
+            data.put("lastUpdated", System.currentTimeMillis());
+            data.put("comment", "Tracks custom item drops per player for events. Player UUIDs are used as keys.");
+
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            Files.writeString(dropCountFile, gson.toJson(data));
+            LOGGER.debug("Saved drop count data to: {}", dropCountFile);
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to save drop count data", e);
+        }
+    }
+
+    /**
+     * Loads drop count data from Drop_Count.json.
+     */
+    public void loadDropCountData() {
+        try {
+            Path dropCountFile = Paths.get(CONFIG_DIR, "Drop_Count.json");
+
+            if (!Files.exists(dropCountFile)) {
+                LOGGER.debug("Drop_Count.json does not exist, using defaults");
+                return;
+            }
+
+            String json = new String(Files.readAllBytes(dropCountFile));
+            if (json.trim().isEmpty()) {
+                LOGGER.warn("Drop_Count.json is empty");
+                return;
+            }
+
+            Gson gson = new Gson();
+            java.lang.reflect.Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
+            Map<String, Object> data = gson.fromJson(json, mapType);
+
+            if (data.containsKey("enabled")) {
+                dropCountEnabled = (Boolean) data.get("enabled");
+            }
+
+            if (data.containsKey("playerDropCounts")) {
+                java.lang.reflect.Type playerCountsType = new TypeToken<Map<String, PlayerDropCount>>(){}.getType();
+                Map<String, PlayerDropCount> counts = gson.fromJson(
+                        gson.toJson(data.get("playerDropCounts")), playerCountsType);
+
+                // Convert string UUIDs back to UUID objects
+                playerDropCounts.clear();
+                if (counts != null) {
+                    counts.forEach((uuidStr, dropCount) -> {
+                        try {
+                            UUID playerId = UUID.fromString(uuidStr);
+                            playerDropCounts.put(playerId, dropCount);
+                        } catch (IllegalArgumentException e) {
+                            LOGGER.warn("Invalid UUID in drop count data: {}", uuidStr);
+                        }
+                    });
+                }
+            }
+
+            LOGGER.info("Loaded drop count data: {} players tracked", playerDropCounts.size());
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to load drop count data", e);
         }
     }
 
@@ -242,6 +472,7 @@ public class LootEventManager {
             state.put("dropChanceEventActive", dropChanceEventActive);
             state.put("doubleDropsActive", doubleDropsActive);
             state.put("debugLoggingEnabled", debugLoggingEnabled);
+            state.put("dropCountEnabled", dropCountEnabled);
 
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             Files.writeString(stateFile, gson.toJson(state));
@@ -304,7 +535,16 @@ public class LootEventManager {
                     LootEventHandler.setDebugLogging(debugLoggingEnabled);
                     LOGGER.info("Restored debug logging state: {}", debugLoggingEnabled);
                 }
+
+                if (state.containsKey("dropCountEnabled")) {
+                    dropCountEnabled = (Boolean) state.get("dropCountEnabled");
+                    LOGGER.info("Restored drop count enabled state: {}", dropCountEnabled);
+                }
             }
+
+            // Load drop count data after loading state
+            loadDropCountData();
+
         } catch (Exception e) {
             LOGGER.error("Failed to load active events state", e);
             // Create default file on error
