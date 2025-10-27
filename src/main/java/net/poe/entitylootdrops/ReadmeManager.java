@@ -28,15 +28,20 @@ public class ReadmeManager {
             Path configDir = Paths.get(CONFIG_DIR);
             Files.createDirectories(configDir);
 
-            // Create main README
-            MainReadmeCreator.createMainReadme(configDir);
-
-            // Create loot drops README
+            // Create loot drops READMEs
             Path lootDropsDir = configDir.resolve("Loot Drops");
             if (Files.exists(lootDropsDir)) {
-                LootDropsReadmeCreator.createLootDropsReadme(lootDropsDir);
-                LootDropsReadmeCreator.createNormalDropsReadme(lootDropsDir.resolve("Normal Drops"));
-                LootDropsReadmeCreator.createEventDropsReadme(lootDropsDir.resolve("Event Drops"));
+                MainReadme.create(lootDropsDir);
+
+                Path normalDropsDir = lootDropsDir.resolve("Normal Drops");
+                if (Files.exists(normalDropsDir)) {
+                    NormalDropsReadme.create(normalDropsDir);
+                }
+
+                Path eventDropsDir = lootDropsDir.resolve("Event Drops");
+                if (Files.exists(eventDropsDir)) {
+                    EventDropsReadme.create(eventDropsDir);
+                }
             }
 
             LOGGER.info("Created all README files");

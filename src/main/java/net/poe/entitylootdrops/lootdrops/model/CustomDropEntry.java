@@ -30,6 +30,15 @@ public class CustomDropEntry {
     private int extraAmountMax = 1;          // Maximum amount of extra vanilla drops
     private boolean enableDropCount = false; // Enable drop count tracking for this entry
 
+    // NBT Entity Data fields
+    private String nbtEntityData;       // Path to NBT data (e.g., "ForgeCaps.mmorpg:entity_data.health")
+    private String nbtDataCondition;    // Comparison operator: "<", ">", "<=", ">=", "==", "!="
+    private String nbtDataValue;        // Value to compare against (supports int, float, double, string, boolean)
+    private String nbtEntityDrop;       // Item to drop if NBT condition is met (overrides itemId if set)
+    private Float nbtEntityDropChance;  // Drop chance for NBT-specific drop (overrides dropChance if set)
+    private Integer nbtEntityDropMin;   // Min amount for NBT-specific drop (overrides minAmount if set)
+    private Integer nbtEntityDropMax;   // Max amount for NBT-specific drop (overrides maxAmount if set)
+
     /**
      * Default constructor for Gson deserialization.
      */
@@ -99,6 +108,15 @@ public class CustomDropEntry {
     public int getExtraAmountMax() { return extraAmountMax; }
     public boolean isEnableDropCount() { return enableDropCount; }
 
+    // NBT Entity Data getters
+    public String getNbtEntityData() { return nbtEntityData; }
+    public String getNbtDataCondition() { return nbtDataCondition; }
+    public String getNbtDataValue() { return nbtDataValue; }
+    public String getNbtEntityDrop() { return nbtEntityDrop; }
+    public Float getNbtEntityDropChance() { return nbtEntityDropChance; }
+    public Integer getNbtEntityDropMin() { return nbtEntityDropMin; }
+    public Integer getNbtEntityDropMax() { return nbtEntityDropMax; }
+
     // Setters
     public void setItemId(String itemId) { this.itemId = itemId; }
     public void setDropChance(float dropChance) { this.dropChance = dropChance; }
@@ -126,6 +144,15 @@ public class CustomDropEntry {
     public void setExtraAmountMax(int extraAmountMax) { this.extraAmountMax = extraAmountMax; }
     public void setEnableDropCount(boolean enableDropCount) { this.enableDropCount = enableDropCount; }
 
+    // NBT Entity Data setters
+    public void setNbtEntityData(String nbtEntityData) { this.nbtEntityData = nbtEntityData; }
+    public void setNbtDataCondition(String nbtDataCondition) { this.nbtDataCondition = nbtDataCondition; }
+    public void setNbtDataValue(String nbtDataValue) { this.nbtDataValue = nbtDataValue; }
+    public void setNbtEntityDrop(String nbtEntityDrop) { this.nbtEntityDrop = nbtEntityDrop; }
+    public void setNbtEntityDropChance(Float nbtEntityDropChance) { this.nbtEntityDropChance = nbtEntityDropChance; }
+    public void setNbtEntityDropMin(Integer nbtEntityDropMin) { this.nbtEntityDropMin = nbtEntityDropMin; }
+    public void setNbtEntityDropMax(Integer nbtEntityDropMax) { this.nbtEntityDropMax = nbtEntityDropMax; }
+
     // Utility methods
     public boolean hasCommand() { return command != null && !command.isEmpty(); }
     public boolean hasDropCommand() { return dropCommand != null && !dropCommand.isEmpty(); }
@@ -138,6 +165,41 @@ public class CustomDropEntry {
     public boolean hasRequiredDimension() { return requiredDimension != null && !requiredDimension.isEmpty(); }
     public boolean hasRequiredBiome() { return requiredBiome != null && !requiredBiome.isEmpty(); }
     public boolean hasCommandCoolDown() { return commandCoolDown > 0; }
+
+    // NBT Entity Data utility methods
+    public boolean hasNbtEntityCondition() {
+        return nbtEntityData != null && !nbtEntityData.isEmpty() &&
+                nbtDataCondition != null && !nbtDataCondition.isEmpty() &&
+                nbtDataValue != null && !nbtDataValue.isEmpty();
+    }
+
+    /**
+     * Gets the effective item ID (NBT override or default).
+     */
+    public String getEffectiveItemId() {
+        return (nbtEntityDrop != null && !nbtEntityDrop.isEmpty()) ? nbtEntityDrop : itemId;
+    }
+
+    /**
+     * Gets the effective drop chance (NBT override or default).
+     */
+    public float getEffectiveDropChance() {
+        return (nbtEntityDropChance != null) ? nbtEntityDropChance : dropChance;
+    }
+
+    /**
+     * Gets the effective min amount (NBT override or default).
+     */
+    public int getEffectiveMinAmount() {
+        return (nbtEntityDropMin != null) ? nbtEntityDropMin : minAmount;
+    }
+
+    /**
+     * Gets the effective max amount (NBT override or default).
+     */
+    public int getEffectiveMaxAmount() {
+        return (nbtEntityDropMax != null) ? nbtEntityDropMax : maxAmount;
+    }
 
     public boolean hasItem() {
         return itemId != null && !itemId.isEmpty();

@@ -41,8 +41,51 @@ public class LootCommands {
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
 
+        // PUBLIC LEADERBOARD COMMANDS (No OP required)
+
+        // Combined top players across ALL events - /lootdrops alltop [count]
+        // This command can be used by any player
+        dispatcher.register(Commands.literal("lootdrops")
+                .then(Commands.literal("alltop")
+                        .executes(context -> {
+                            return showAllEventsTopPlayers(context, 5);
+                        })
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 50))
+                                .executes(context -> {
+                                    int count = IntegerArgumentType.getInteger(context, "count");
+                                    return showAllEventsTopPlayers(context, count);
+                                })
+                        )
+                )
+                // Event-specific top players - /lootdrops eventtop <eventName> [count]
+                // This command can be used by any player
+                .then(Commands.literal("eventtop")
+                        .then(Commands.argument("eventName", StringArgumentType.string())
+                                .suggests((context, builder) -> {
+                                    // Suggest events that have drop count data
+                                    for (String eventName : EventDropCountManager.getEventsWithDropCounts()) {
+                                        builder.suggest(eventName);
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(context -> {
+                                    String eventName = StringArgumentType.getString(context, "eventName");
+                                    return showEventTopPlayers(context, eventName, 5);
+                                })
+                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 50))
+                                        .executes(context -> {
+                                            String eventName = StringArgumentType.getString(context, "eventName");
+                                            int count = IntegerArgumentType.getInteger(context, "count");
+                                            return showEventTopPlayers(context, eventName, count);
+                                        })
+                                )
+                        )
+                )
+        );
+
+        // ADMIN COMMANDS (OP Required)
         // Main command - /lootdrops
-        // This is the root command that all other subcommands are attached to
+        // This is the root command that all admin subcommands are attached to
         LiteralArgumentBuilder<CommandSourceStack> rootCommand = Commands.literal("lootdrops")
                 .requires(source -> source.hasPermission(2)); // Requires permission level 2 (op)
 
@@ -178,45 +221,6 @@ public class LootCommands {
                             }
                             return 1; // Command succeeded
                         })
-                )
-        );
-
-        // DROP COUNT COMMANDS - UPDATED FOR PER-EVENT SYSTEM
-
-        // Combined top players across ALL events - /lootdrops alltop [count]
-        rootCommand.then(Commands.literal("alltop")
-                .executes(context -> {
-                    return showAllEventsTopPlayers(context, 5);
-                })
-                .then(Commands.argument("count", IntegerArgumentType.integer(1, 50))
-                        .executes(context -> {
-                            int count = IntegerArgumentType.getInteger(context, "count");
-                            return showAllEventsTopPlayers(context, count);
-                        })
-                )
-        );
-
-        // Event-specific top players - /lootdrops eventtop <eventName> [count]
-        rootCommand.then(Commands.literal("eventtop")
-                .then(Commands.argument("eventName", StringArgumentType.string())
-                        .suggests((context, builder) -> {
-                            // Suggest events that have drop count data
-                            for (String eventName : EventDropCountManager.getEventsWithDropCounts()) {
-                                builder.suggest(eventName);
-                            }
-                            return builder.buildFuture();
-                        })
-                        .executes(context -> {
-                            String eventName = StringArgumentType.getString(context, "eventName");
-                            return showEventTopPlayers(context, eventName, 5);
-                        })
-                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 50))
-                                .executes(context -> {
-                                    String eventName = StringArgumentType.getString(context, "eventName");
-                                    int count = IntegerArgumentType.getInteger(context, "count");
-                                    return showEventTopPlayers(context, eventName, count);
-                                })
-                        )
                 )
         );
 
@@ -405,7 +409,7 @@ public class LootCommands {
                 })
         );
 
-        // Register the command with the dispatcher
+        // Register the admin command with the dispatcher
         dispatcher.register(rootCommand);
     }
 
@@ -429,25 +433,33 @@ public class LootCommands {
 
         int rank = 1;
         for (EventDropCountManager.CombinedPlayerDropCount player : topPlayers) {
-            // Create clickable player name for detailed stats
+            // Create clickable player name for detailed stats (only if OP)
+            Component playerNameComponent;
+            if (context.getSource().hasPermission(2)) {
+                playerNameComponent = Component.literal("§a" + player.getPlayerName())
+                        .withStyle(style -> style
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/lootdrops playerstats " + player.getPlayerName()))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                        Component.literal("Click to view " + player.getPlayerName() + "'s detailed stats")))
+                                .withUnderlined(true)
+                        );
+            } else {
+                playerNameComponent = Component.literal("§a" + player.getPlayerName());
+            }
+
             Component message = Component.literal(String.format("§e%d. ", rank))
-                    .append(Component.literal("§a" + player.getPlayerName())
-                            .withStyle(style -> style
-                                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/lootdrops playerstats " + player.getPlayerName()))
-                                    .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                            Component.literal("Click to view " + player.getPlayerName() + "'s detailed stats")))
-                                    .withUnderlined(true)
-                            )
-                    )
+                    .append(playerNameComponent)
                     .append(Component.literal(String.format("§f: §b%d §7total drops", player.getTotalDrops())));
 
             context.getSource().sendSuccess(() -> message, false);
             rank++;
         }
 
-        // Footer message
-        context.getSource().sendSuccess(() ->
-                Component.literal("§7§o(Click player names for detailed stats)"), false);
+        // Footer message (only show if OP)
+        if (context.getSource().hasPermission(2)) {
+            context.getSource().sendSuccess(() ->
+                    Component.literal("§7§o(Click player names for detailed stats)"), false);
+        }
 
         return 1;
     }
@@ -472,16 +484,22 @@ public class LootCommands {
         for (int i = 0; i < topPlayers.size(); i++) {
             var player = topPlayers.get(i);
 
-            // Create clickable player name
+            // Create clickable player name (only if OP)
+            Component playerNameComponent;
+            if (context.getSource().hasPermission(2)) {
+                playerNameComponent = Component.literal("§a" + player.getPlayerName())
+                        .withStyle(style -> style
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/lootdrops playerstats " + player.getPlayerName()))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                        Component.literal("Click to view " + player.getPlayerName() + "'s stats for " + eventName)))
+                                .withUnderlined(true)
+                        );
+            } else {
+                playerNameComponent = Component.literal("§a" + player.getPlayerName());
+            }
+
             Component message = Component.literal(String.format("§e%d. ", i + 1))
-                    .append(Component.literal("§a" + player.getPlayerName())
-                            .withStyle(style -> style
-                                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/lootdrops playerstats " + player.getPlayerName()))
-                                    .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                            Component.literal("Click to view " + player.getPlayerName() + "'s stats for " + eventName)))
-                                    .withUnderlined(true)
-                            )
-                    )
+                    .append(playerNameComponent)
                     .append(Component.literal(String.format("§f: §b%d §7drops", player.getTotalEventDrops())));
 
             context.getSource().sendSuccess(() -> message, false);

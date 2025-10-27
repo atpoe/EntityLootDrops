@@ -71,8 +71,16 @@ public abstract class LootTableParserMixin {
             }
             var mobTableId = type.getDefaultLootTable();
             LootTable mobTable = manager.getLootTable(mobTableId);
+
+            // Only process empty loot tables if this specific entity has configured drops
             if (mobTable == LootTable.EMPTY) {
                 ResourceLocation mobId = ForgeRegistries.ENTITY_TYPES.getKey(type);
+
+                // Check if this entity has any applicable drops before processing
+                if (!entitylootdrops$hasApplicableDrops(mobId.toString(), type)) {
+                    return;
+                }
+
                 int size = addLootPool(mobTable, mobId, type);
                 if (size > 0) {
                     currentTable = mobTableId.toString();
@@ -80,6 +88,16 @@ public abstract class LootTableParserMixin {
                 }
             }
         });
+    }
+
+    @Unique
+    private static boolean entitylootdrops$hasApplicableDrops(String entityId, EntityType<?> entityType) {
+        for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
+            if (entitylootdrops$shouldApplyDrop(drop, entityId, entityType)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Unique

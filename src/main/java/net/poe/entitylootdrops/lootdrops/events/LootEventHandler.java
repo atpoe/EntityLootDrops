@@ -42,6 +42,7 @@ import net.poe.entitylootdrops.lootdrops.LootConfig;
 import net.poe.entitylootdrops.lootdrops.config.EventConfig;
 import net.poe.entitylootdrops.lootdrops.model.CustomDropEntry;
 import net.poe.entitylootdrops.lootdrops.model.EntityDropEntry;
+import net.poe.entitylootdrops.lootdrops.handlers.NBTDropHandler;
 import net.poe.entitylootdrops.lootdrops.events.EventDropCountManager;
 
 /**
@@ -535,7 +536,12 @@ public class LootEventHandler {
     private static void processDropEntry(LivingDropsEvent event, CustomDropEntry drop,
                                          Player player, boolean playerKilled, String eventName) {
         try {
-            // Check all requirements
+            // Check NBT conditions FIRST (before other requirements)
+            if (!NBTDropHandler.checkNBTConditions(drop, event.getEntity())) {
+                return; // NBT condition not met, skip this drop
+            }
+
+            // Check all other requirements
             if (!checkDropRequirements(drop, player, playerKilled)) {
                 return;
             }
@@ -543,8 +549,14 @@ public class LootEventHandler {
             // Execute command if present
             executeDropCommand(drop, player, event.getEntity());
 
-            // Handle item drop - NOW WITH EVENT NAME
-            handleItemDrop(event, drop, player, eventName);
+            // Handle item drop - check if NBT handler processed it
+            if (drop.hasNbtEntityCondition() && drop.getNbtEntityDrop() != null) {
+                // Let NBT handler process the drop
+                NBTDropHandler.processNBTDrop(event, drop, player, eventName);
+            } else {
+                // Regular drop handling
+                handleItemDrop(event, drop, player, eventName);
+            }
 
         } catch (Exception e) {
             LOGGER.error("Error processing drop {}: {}", drop.getItemId(), e.getMessage());
