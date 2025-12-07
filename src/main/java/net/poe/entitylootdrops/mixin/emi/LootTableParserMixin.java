@@ -1,7 +1,5 @@
 package net.poe.entitylootdrops.mixin.emi;
 
-import fzzyhmstrs.emi_loot.mixins.BinomialLootNumberProviderAccessor;
-import fzzyhmstrs.emi_loot.mixins.UniformLootNumberProviderAccessor;
 import fzzyhmstrs.emi_loot.parser.LootTableParser;
 import fzzyhmstrs.emi_loot.server.ComplexLootPoolBuilder;
 import fzzyhmstrs.emi_loot.server.MobLootTableSender;
@@ -20,9 +18,6 @@ import net.minecraft.world.level.storage.loot.functions.SetNbtFunction;
 import net.minecraft.world.level.storage.loot.predicates.LootItemKilledByPlayerCondition;
 import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceCondition;
 import net.minecraft.world.level.storage.loot.predicates.WeatherCheck;
-import net.minecraft.world.level.storage.loot.providers.number.BinomialDistributionGenerator;
-import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
-import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
 import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.poe.entitylootdrops.lootdrops.LootConfig;
@@ -35,7 +30,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,33 +69,20 @@ public abstract class LootTableParserMixin {
             }
 
             var mobTableId = type.getDefaultLootTable();
-            LootTable mobTable = manager.getLootTable(mobTableId);
-
-            if (mobTable != LootTable.EMPTY) {
-                return;
-            }
-
             ResourceLocation mobId = ForgeRegistries.ENTITY_TYPES.getKey(type);
-
-            if (!entitylootdrops$hasApplicableDrops(mobId.toString(), type)) {
-                return;
-            }
-
-            var nonExistingMobLootTableBuilder = new LootTable.Builder();
-            int size = entityLootDrops$addLootPool(nonExistingMobLootTableBuilder, mobId, type);
-            var nonExistingMobLootTable = nonExistingMobLootTableBuilder.build();
-            if (size > 0) {
-                currentTable = mobTableId.toString();
-                mobSenders.put(mobTableId, parseMobLootTable(nonExistingMobLootTable, mobTableId, mobId));
+            if (mobSenders.containsKey(mobTableId)) {
+                var sender = mobSenders.get(mobTableId);
+                modifyMobLootTableSender(mobId, sender, type);
+            } else {
+                var nonExistingMobLootTableBuilder = new LootTable.Builder();
+                int size = entityLootDrops$addLootPool(nonExistingMobLootTableBuilder, mobId, type);
+                var nonExistingMobLootTable = nonExistingMobLootTableBuilder.build();
+                if (size > 0) {
+                    currentTable = mobTableId.toString();
+                    mobSenders.put(mobTableId, parseMobLootTable(nonExistingMobLootTable, mobTableId, mobId));
+                }
             }
         });
-
-        for(var entry : mobSenders.entrySet()) {
-            var id = entry.getKey();
-            var sender = entry.getValue();
-
-            modifyMobLootTableSender(id, sender);
-        }
     }
 
     @Unique
@@ -115,28 +96,22 @@ public abstract class LootTableParserMixin {
     }
 
     @Unique
-    private static int entityLootDrops$addLootPool(LootTable.Builder mobTable, ResourceLocation mobTableId, EntityType<?> entityType) {
-        List<LootPool.Builder> lootPools = new ArrayList<>();
+    private static int entityLootDrops$addLootPool(LootTable.Builder mobTable, ResourceLocation mobId, EntityType<?> entityType) {
+        int size = 0;
         for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
-            if (entitylootdrops$shouldApplyDrop(drop, mobTableId.toString(), entityType) && drop.hasItem()) {
-                lootPools.add(addAdvancedLootPoolToList(drop));
+            if (entitylootdrops$shouldApplyDrop(drop, mobId.toString(), entityType) && drop.hasItem()) {
+                mobTable.withPool(addAdvancedLootPoolToList(drop));
+                size++;
             }
         }
 
-        lootPools.forEach(mobTable::withPool);
-        return lootPools.size();
+        return size;
     }
 
-    private static void modifyMobLootTableSender(ResourceLocation mobId, MobLootTableSender sender) {
+    private static void modifyMobLootTableSender(ResourceLocation mobId, MobLootTableSender sender, EntityType<?> entityType) {
         var builderList = sender.getBuilders();
-        String mobIdStringFull = mobId.toString();
-        String mobIdPathString = mobIdStringFull.substring(mobIdStringFull.lastIndexOf('/') + 1);
-        String mobIdNamespace = mobIdStringFull.substring(0, mobIdStringFull.lastIndexOf(':'));
-        String mobIdString = mobIdNamespace + ":" + mobIdPathString;
+        String mobIdString = mobId.toString();
         entitylootdrops$entitiesDone.put(mobIdString, true);
-
-        EntityType<?> entityType = ForgeRegistries.ENTITY_TYPES.getValue(mobId);
-        if (entityType == null) return;
 
         // Phase 1: Handle vanilla drop modifications and mod filtering
         boolean shouldCancelVanillaDrops = false;
@@ -221,59 +196,17 @@ public abstract class LootTableParserMixin {
             for (SimpleLootPoolBuilder item : map.values()) {
                 var accessor = (SimpleLootPoolBuilderAccessor) item;
                 for (var itemStack : accessor.getMap().keySet()) {
-                    if (itemStack.getDescriptionId().equals(drop.getItemId())) {
-                        itemStack.setCount(addedAmount + itemStack.getCount());
-                    }
+                    itemStack.setCount(addedAmount + itemStack.getCount());
                 }
             }
         }
     }
 
     @Unique
-    private static NumberProvider addToNumberProvider(NumberProvider numberProvider, int addedAmount) {
-        if (numberProvider instanceof UniformGenerator) {
-            var min = getGeneratorMin(numberProvider);
-            var max = getGeneratorMax(numberProvider) + addedAmount;
-            return UniformGenerator.between(min, max);
-        } else if (numberProvider instanceof BinomialDistributionGenerator binomialDistributionGenerator) {
-            var max = getGeneratorMax(binomialDistributionGenerator) + addedAmount;
-            return UniformGenerator.between(0, max);
-        } else if (numberProvider instanceof ConstantValue constantValue) {
-            return ConstantValue.exactly(constantValue.getFloat(null) + addedAmount);
-        }
-        return numberProvider;
-    }
-
-    @Unique
-    private static float getGeneratorMin(NumberProvider numberProvider) {
-        if (numberProvider instanceof UniformGenerator) {
-            return getGeneratorMin(((UniformLootNumberProviderAccessor) numberProvider).getMin());
-        } else if (numberProvider instanceof BinomialDistributionGenerator) {
-            return 0;
-        } else if (numberProvider instanceof ConstantValue constantValue) {
-            return constantValue.getFloat(null);
-        }
-        return 0;
-    }
-
-    @Unique
-    private static float getGeneratorMax(NumberProvider numberProvider) {
-        if (numberProvider instanceof UniformGenerator) {
-            return getGeneratorMax(((UniformLootNumberProviderAccessor) numberProvider).getMax());
-        } else if (numberProvider instanceof BinomialDistributionGenerator) {
-            return getGeneratorMax(((BinomialLootNumberProviderAccessor) numberProvider).getN());
-        } else if (numberProvider instanceof ConstantValue constantValue) {
-            return constantValue.getFloat(null);
-        }
-        return 0;
-    }
-
-    @Unique
     private static LootPool.Builder addAdvancedLootPoolToList(EntityDropEntry drop) {
         var lootItem = lootTableItem(ForgeRegistries.ITEMS.getValue(ResourceLocation.tryParse(drop.getItemId())));
+        lootItem.apply(SetItemCountFunction.setCount(UniformGenerator.between(drop.getMinAmount(), drop.getMaxAmount())));
         var builder = lootPool().add(lootItem);
-
-        builder.apply(SetItemCountFunction.setCount(UniformGenerator.between(drop.getMinAmount(), drop.getMaxAmount())));
 
         // Add NBT data if present - no instanceof needed since EntityDropEntry extends CustomDropEntry
         if (drop.getNbtData() != null && !drop.getNbtData().isEmpty()) {
