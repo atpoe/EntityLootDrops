@@ -1,32 +1,30 @@
 package net.poe.entitylootdrops.mixin.emi;
 
 import fzzyhmstrs.emi_loot.mixins.BinomialLootNumberProviderAccessor;
-import fzzyhmstrs.emi_loot.mixins.LootPoolAccessor;
-import net.poe.entitylootdrops.mixin.LootPoolSingletonContainerAccessor;
 import fzzyhmstrs.emi_loot.mixins.UniformLootNumberProviderAccessor;
 import fzzyhmstrs.emi_loot.parser.LootTableParser;
+import fzzyhmstrs.emi_loot.server.ComplexLootPoolBuilder;
 import fzzyhmstrs.emi_loot.server.MobLootTableSender;
+import fzzyhmstrs.emi_loot.server.SimpleLootPoolBuilder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.storage.loot.LootDataId;
 import net.minecraft.world.level.storage.loot.LootDataManager;
 import net.minecraft.world.level.storage.loot.LootPool;
 import net.minecraft.world.level.storage.loot.LootTable;
-import net.minecraft.world.level.storage.loot.entries.LootItem;
-import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
 import net.minecraft.world.level.storage.loot.functions.SetItemCountFunction;
 import net.minecraft.world.level.storage.loot.functions.SetNbtFunction;
-import net.minecraft.world.level.storage.loot.predicates.*;
+import net.minecraft.world.level.storage.loot.predicates.LootItemKilledByPlayerCondition;
+import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceCondition;
+import net.minecraft.world.level.storage.loot.predicates.WeatherCheck;
 import net.minecraft.world.level.storage.loot.providers.number.BinomialDistributionGenerator;
 import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
 import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
 import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.registries.ForgeRegistries;
-import net.poe.entitylootdrops.LootTablePools2;
-import net.poe.entitylootdrops.SetItemCountFunctionNumberProviderAccessor;
 import net.poe.entitylootdrops.lootdrops.LootConfig;
 import net.poe.entitylootdrops.lootdrops.model.EntityDropEntry;
 import org.spongepowered.asm.mixin.Final;
@@ -36,9 +34,11 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static net.minecraft.world.level.storage.loot.LootPool.lootPool;
 import static net.minecraft.world.level.storage.loot.entries.LootItem.lootTableItem;
@@ -57,6 +57,10 @@ public abstract class LootTableParserMixin {
         return null;
     }
 
+    @Shadow
+    protected static void parseMobLootTableInternal(LootTable lootTable, MobLootTableSender sender, boolean isDirect) {
+    }
+
     @Unique
     private static Map<String, Boolean> entitylootdrops$entitiesDone = new HashMap<>();
 
@@ -69,25 +73,35 @@ public abstract class LootTableParserMixin {
             if (entitylootdrops$entitiesDone.containsKey(type.getDescriptionId())) {
                 return;
             }
+
             var mobTableId = type.getDefaultLootTable();
             LootTable mobTable = manager.getLootTable(mobTableId);
 
-            // Only process empty loot tables if this specific entity has configured drops
-            if (mobTable == LootTable.EMPTY) {
-                ResourceLocation mobId = ForgeRegistries.ENTITY_TYPES.getKey(type);
+            if (mobTable != LootTable.EMPTY) {
+                return;
+            }
 
-                // Check if this entity has any applicable drops before processing
-                if (!entitylootdrops$hasApplicableDrops(mobId.toString(), type)) {
-                    return;
-                }
+            ResourceLocation mobId = ForgeRegistries.ENTITY_TYPES.getKey(type);
 
-                int size = addLootPool(mobTable, mobId, type);
-                if (size > 0) {
-                    currentTable = mobTableId.toString();
-                    mobSenders.put(mobTableId, parseMobLootTable(mobTable, mobTableId, mobId));
-                }
+            if (!entitylootdrops$hasApplicableDrops(mobId.toString(), type)) {
+                return;
+            }
+
+            var nonExistingMobLootTableBuilder = new LootTable.Builder();
+            int size = entityLootDrops$addLootPool(nonExistingMobLootTableBuilder, mobId, type);
+            var nonExistingMobLootTable = nonExistingMobLootTableBuilder.build();
+            if (size > 0) {
+                currentTable = mobTableId.toString();
+                mobSenders.put(mobTableId, parseMobLootTable(nonExistingMobLootTable, mobTableId, mobId));
             }
         });
+
+        for(var entry : mobSenders.entrySet()) {
+            var id = entry.getKey();
+            var sender = entry.getValue();
+
+            modifyMobLootTableSender(id, sender);
+        }
     }
 
     @Unique
@@ -101,26 +115,25 @@ public abstract class LootTableParserMixin {
     }
 
     @Unique
-    private static int addLootPool(LootTable mobTable, ResourceLocation mobTableId, EntityType<?> entityType) {
-        List<LootPool> lootPools = new ArrayList<>();
+    private static int entityLootDrops$addLootPool(LootTable.Builder mobTable, ResourceLocation mobTableId, EntityType<?> entityType) {
+        List<LootPool.Builder> lootPools = new ArrayList<>();
         for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
             if (entitylootdrops$shouldApplyDrop(drop, mobTableId.toString(), entityType) && drop.hasItem()) {
-                addAdvancedLootPool(lootPools, drop);
+                lootPools.add(addAdvancedLootPoolToList(drop));
             }
         }
 
-        lootPools.forEach(mobTable::addPool);
+        lootPools.forEach(mobTable::withPool);
         return lootPools.size();
     }
 
-    @Inject(
-            method = "parseMobLootTable",
-            at = @At("HEAD")
-    )
-    private static void $parseMobLootTable(LootTable lootTable, ResourceLocation lootTableId, ResourceLocation mobId, CallbackInfoReturnable<MobLootTableSender> cir) {
-        entitylootdrops$entitiesDone.put(mobId.toString(), true);
-        List<LootPool> lootPools = new ArrayList<>();
-        lootPools.addAll(Arrays.asList(((LootTablePools2) lootTable).getPools()));
+    private static void modifyMobLootTableSender(ResourceLocation mobId, MobLootTableSender sender) {
+        var builderList = sender.getBuilders();
+        String mobIdStringFull = mobId.toString();
+        String mobIdPathString = mobIdStringFull.substring(mobIdStringFull.lastIndexOf('/') + 1);
+        String mobIdNamespace = mobIdStringFull.substring(0, mobIdStringFull.lastIndexOf(':'));
+        String mobIdString = mobIdNamespace + ":" + mobIdPathString;
+        entitylootdrops$entitiesDone.put(mobIdString, true);
 
         EntityType<?> entityType = ForgeRegistries.ENTITY_TYPES.getValue(mobId);
         if (entityType == null) return;
@@ -128,7 +141,7 @@ public abstract class LootTableParserMixin {
         // Phase 1: Handle vanilla drop modifications and mod filtering
         boolean shouldCancelVanillaDrops = false;
         for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
-            if (entitylootdrops$shouldApplyDrop(drop, mobId.toString(), entityType)) {
+            if (entitylootdrops$shouldApplyDrop(drop, mobIdString, entityType)) {
                 // Check mod filtering - since EntityDropEntry extends CustomDropEntry, no instanceof needed
                 if (!drop.getAllowModIDs().isEmpty()) {
                     if (!entitylootdrops$isModAllowed(mobId, drop.getAllowModIDs())) {
@@ -144,24 +157,24 @@ public abstract class LootTableParserMixin {
         }
 
         if (shouldCancelVanillaDrops) {
-            lootPools.clear();
+            builderList.clear();
         }
 
         // Phase 2: Process extra vanilla drops
         for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
-            if (entitylootdrops$shouldApplyDrop(drop, mobId.toString(), entityType) && drop.getExtraDropChance() > 0) {
-                addExtraDrop(lootPools, drop);
+            if (entitylootdrops$shouldApplyDrop(drop, mobIdString, entityType) && drop.getExtraDropChance() > 0) {
+                addExtraDrop(builderList, drop);
             }
         }
 
         // Phase 3: Process custom drops with advanced features
         for (EntityDropEntry drop : LootConfig.getNormalDrops()) {
-            if (entitylootdrops$shouldApplyDrop(drop, mobId.toString(), entityType) && drop.hasItem()) {
-                addAdvancedLootPool(lootPools, drop);
+            if (entitylootdrops$shouldApplyDrop(drop, mobIdString, entityType) && drop.hasItem()) {
+                var lootPool = addAdvancedLootPoolToList(drop);
+                var lootTable = (new LootTable.Builder()).withPool(lootPool).build();
+                parseMobLootTableInternal(lootTable, sender, false);
             }
         }
-
-        ((LootTablePools2) lootTable).setPools(lootPools.toArray(new LootPool[0]));
     }
 
     @Unique
@@ -201,27 +214,15 @@ public abstract class LootTableParserMixin {
     }
 
     @Unique
-    private static void addExtraDrop(List<LootPool> lootPools, EntityDropEntry drop) {
-        var addedAmount = Math.max(drop.getExtraAmountMin(), drop.getExtraAmountMax());
-        for (LootPool pool : lootPools) {
-            var functions = ((LootPoolAccessor) pool).getFunctions();
-            for (LootItemFunction function : functions) {
-                if (function instanceof SetItemCountFunction setItemCountFunction) {
-                    SetItemCountFunctionNumberProviderAccessor accessor = (SetItemCountFunctionNumberProviderAccessor) setItemCountFunction;
-                    var numberProvider = accessor.getNumberProvider();
-                    accessor.setNumberProvider(addToNumberProvider(numberProvider, addedAmount));
-                }
-            }
-            var entries = ((LootPoolAccessor) pool).getEntries();
-            for (var entry : entries) {
-                if (entry instanceof LootItem lootItem) {
-                    var functions2 = ((LootPoolSingletonContainerAccessor) lootItem).getFunctions();
-                    for (LootItemFunction function : functions2) {
-                        if (function instanceof SetItemCountFunction setItemCountFunction) {
-                            SetItemCountFunctionNumberProviderAccessor accessor = (SetItemCountFunctionNumberProviderAccessor) setItemCountFunction;
-                            var numberProvider = accessor.getNumberProvider();
-                            accessor.setNumberProvider(addToNumberProvider(numberProvider, addedAmount));
-                        }
+    private static void addExtraDrop(List<ComplexLootPoolBuilder> builderList, EntityDropEntry drop) {
+        var addedAmount = (drop.getExtraAmountMin() + drop.getExtraAmountMax()) / 2;
+        for (ComplexLootPoolBuilder pool : builderList) {
+            var map = ((ComplexLootPoolBuilderAccessor) pool).getMap();
+            for (SimpleLootPoolBuilder item : map.values()) {
+                var accessor = (SimpleLootPoolBuilderAccessor) item;
+                for (var itemStack : accessor.getMap().keySet()) {
+                    if (itemStack.getDescriptionId().equals(drop.getItemId())) {
+                        itemStack.setCount(addedAmount + itemStack.getCount());
                     }
                 }
             }
@@ -268,11 +269,10 @@ public abstract class LootTableParserMixin {
     }
 
     @Unique
-    private static void addAdvancedLootPool(List<LootPool> lootPools, EntityDropEntry drop) {
+    private static LootPool.Builder addAdvancedLootPoolToList(EntityDropEntry drop) {
         var lootItem = lootTableItem(ForgeRegistries.ITEMS.getValue(ResourceLocation.tryParse(drop.getItemId())));
         var builder = lootPool().add(lootItem);
 
-        // Basic item count
         builder.apply(SetItemCountFunction.setCount(UniformGenerator.between(drop.getMinAmount(), drop.getMaxAmount())));
 
         // Add NBT data if present - no instanceof needed since EntityDropEntry extends CustomDropEntry
@@ -286,20 +286,16 @@ public abstract class LootTableParserMixin {
             }
         }
 
-        // Player kill requirement
         if (drop.isRequirePlayerKill()) {
             builder.when(LootItemKilledByPlayerCondition.killedByPlayer());
         }
 
-        // Drop chance
         if (drop.getDropChance() < 100) {
             builder.when(LootItemRandomChanceCondition.randomChance(drop.getDropChance() / 100.0f));
         }
 
-        // Advanced conditions - no instanceof needed
         addAdvancedConditions(builder, drop);
-
-        lootPools.add(builder.build());
+        return builder;
     }
 
     @Unique

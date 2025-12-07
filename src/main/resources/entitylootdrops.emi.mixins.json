@@ -5,7 +5,9 @@
   "compatibilityLevel": "JAVA_17",
   "plugin": "net.poe.entitylootdrops.mixin.ConditionalMixinPlugin",
   "mixins": [
-    "LootTableParserMixin"
+    "ComplexLootPoolBuilderAccessor",
+    "LootTableParserMixin",
+    "SimpleLootPoolBuilderAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
