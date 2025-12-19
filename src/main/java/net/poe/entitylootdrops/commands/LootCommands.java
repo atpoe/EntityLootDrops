@@ -141,57 +141,59 @@ public class LootCommands {
                                 })
                         )
                 )
-                // Drop chance event subcommand - /lootdrops event dropchance <true|false>
-                // Used to enable or disable the double drop chance event
-                .then(Commands.literal("dropchance")
-                        .then(Commands.argument("active", BoolArgumentType.bool())
-                                .executes(context -> {
-                                    // Extract command arguments
-                                    boolean active = BoolArgumentType.getBool(context, "active");
+        );
 
-                                    // Toggle the drop chance event
-                                    LootConfig.toggleDropChanceEvent(active);
+        // Drop chance event subcommand - /lootdrops dropchance <true|false>
+        // Used to enable or disable the double drop chance event
+        rootCommand.then(Commands.literal("dropchance")
+                .then(Commands.argument("active", BoolArgumentType.bool())
+                        .executes(context -> {
+                            // Extract command arguments
+                            boolean active = BoolArgumentType.getBool(context, "active");
 
-                                    // Sync changes to Forge config
-                                    boolean syncSuccess = ModConfig.syncFromLootConfig();
-                                    if (!syncSuccess) {
-                                        context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
-                                    }
+                            // Toggle the drop chance event
+                            LootConfig.toggleDropChanceEvent(active);
 
-                                    // Send success message
-                                    String statusMessage = active ? "§aEnabled" : "§cDisabled";
-                                    context.getSource().sendSuccess(() ->
-                                            Component.literal(statusMessage + " drop chance event (2x drop rates)"), true);
+                            // Sync changes to Forge config
+                            boolean syncSuccess = ModConfig.syncFromLootConfig();
+                            if (!syncSuccess) {
+                                context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                            }
 
-                                    return 1; // Command succeeded
-                                })
-                        )
+                            // Send success message
+                            String statusMessage = active ? "§aEnabled" : "§cDisabled";
+                            context.getSource().sendSuccess(() ->
+                                    Component.literal(statusMessage + " drop chance event (2x drop rates)"), true);
+
+                            return 1; // Command succeeded
+                        })
                 )
-                // Double drops event subcommand - /lootdrops event doubledrops <true|false>
-                // Used to enable or disable the double drops event
-                .then(Commands.literal("doubledrops")
-                        .then(Commands.argument("active", BoolArgumentType.bool())
-                                .executes(context -> {
-                                    // Extract command arguments
-                                    boolean active = BoolArgumentType.getBool(context, "active");
+        );
 
-                                    // Toggle the double drops event
-                                    LootConfig.toggleDoubleDrops(active);
+        // Double drops event subcommand - /lootdrops doubledrops <true|false>
+        // Used to enable or disable the double drops event
+        rootCommand.then(Commands.literal("doubledrops")
+                .then(Commands.argument("active", BoolArgumentType.bool())
+                        .executes(context -> {
+                            // Extract command arguments
+                            boolean active = BoolArgumentType.getBool(context, "active");
 
-                                    // Sync changes to Forge config
-                                    boolean syncSuccess = ModConfig.syncFromLootConfig();
-                                    if (!syncSuccess) {
-                                        context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
-                                    }
+                            // Toggle the double drops event
+                            LootConfig.toggleDoubleDrops(active);
 
-                                    // Send success message
-                                    String statusMessage = active ? "§aEnabled" : "§cDisabled";
-                                    context.getSource().sendSuccess(() ->
-                                            Component.literal(statusMessage + " double drops event (2x amounts)"), true);
+                            // Sync changes to Forge config
+                            boolean syncSuccess = ModConfig.syncFromLootConfig();
+                            if (!syncSuccess) {
+                                context.getSource().sendFailure(Component.literal("Warning: Config sync failed. Changes may not persist after restart."));
+                            }
 
-                                    return 1; // Command succeeded
-                                })
-                        )
+                            // Send success message
+                            String statusMessage = active ? "§aEnabled" : "§cDisabled";
+                            context.getSource().sendSuccess(() ->
+                                    Component.literal(statusMessage + " double drops event (2x amounts)"), true);
+
+                            return 1; // Command succeeded
+                        })
                 )
         );
 
